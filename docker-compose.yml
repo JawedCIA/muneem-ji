@@ -1,0 +1,60 @@
+services:
+  muneemji:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: muneemji:latest
+    container_name: muneemji
+    restart: unless-stopped
+    ports:
+      - "${MUNEEMJI_PORT:-3001}:3001"
+    volumes:
+      - muneemji-data:/app/data
+    environment:
+      NODE_ENV: production
+      # Optional overrides — uncomment to customise
+      # JWT_SECRET: change-me-in-production-or-use-the-auto-generated-one
+      # CORS_ORIGIN: https://billing.yourshop.com
+      # BACKUP_HOUR: "2"
+      # BACKUP_RETENTION_DAYS: "7"
+      # COOKIE_INSECURE: "1"   # set to 1 only if running behind HTTP (no TLS) — NOT recommended
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # One-shot migration service. Shares the same image + data volume.
+  # The main `muneemji` service ALSO auto-runs migrations on boot, so this
+  # service is for explicit ops use (e.g. inspecting status without restarting
+  # the running app, or running migrations BEFORE bringing the server up after
+  # a known-risky upgrade).
+  #
+  # Requires the muneemji:latest image to be built first (`docker compose build`).
+  # Usage:
+  #   docker compose run --rm migrate              → apply pending migrations
+  #   docker compose run --rm migrate-status       → list applied + pending
+  migrate:
+    image: muneemji:latest
+    profiles: ["tools"]
+    volumes:
+      - muneemji-data:/app/data
+    environment:
+      NODE_ENV: production
+    entrypoint: ["/sbin/tini", "--"]
+    command: ["node", "server/db/migrate.js"]
+
+  migrate-status:
+    image: muneemji:latest
+    profiles: ["tools"]
+    volumes:
+      - muneemji-data:/app/data
+    environment:
+      NODE_ENV: production
+    entrypoint: ["/sbin/tini", "--"]
+    command: ["node", "server/db/migrate.js", "status"]
+
+volumes:
+  muneemji-data:
+    driver: local

@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+server/db/*.sqlite
+server/db/*.sqlite-shm
+server/db/*.sqlite-wal
+server/db/*.db
+server/uploads/*
+!server/uploads/.gitkeep
+data/
+.jwt-secret
+*.bak
+
+# Local IDE / agent config
+.claude/
+.idea/
+.vscode/
+*.swp
