@@ -61,7 +61,9 @@ If you're a shop owner, a developer building for one, or just someone who believ
 
 ### Reports
 - Dashboard with KPIs and 6-month trend charts
-- Sales Register, GST Summary (rate-wise), GSTR-1 format
+- Sales Register, GST Summary (rate-wise)
+- **GSTR-1 returns** — full B2B, B2CL, B2CS, CDNR, CDNUR, HSN summary, and Documents-Issued sections; per-section CSV download in the Tally / GSTN offline-tool format; warnings flag missing HSN codes and orphan credit notes before you file
+- **GSTR-3B summary** — 3.1(a), 3.1(c), 3.2, 4(A)(5) ITC, and 6.1 tax-payable; read-off-and-type into the GST portal
 - Profit & Loss with COGS calculation
 - Party Ledger with running balance
 - Expense report with monthly trend
@@ -271,6 +273,9 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | GET    | `/api/reports/pl`                     | Profit & Loss                              |
 | GET    | `/api/reports/party-ledger/:id`       | Party ledger with running balance          |
 | GET    | `/api/reports/expense-summary`        | Expense breakdown                          |
+| GET    | `/api/reports/gstr1?period=YYYY-MM`   | GSTR-1 sections (B2B, B2CL, B2CS, CDNR, CDNUR, HSN, DOCS) + counts/totals/warnings |
+| GET    | `/api/reports/gstr1/csv?period=YYYY-MM&section=b2b\|b2cl\|b2cs\|cdnr\|cdnur\|hsn\|docs` | Tally-compatible CSV per section |
+| GET    | `/api/reports/gstr3b?period=YYYY-MM`  | GSTR-3B summary (3.1a, 3.1c, 3.2, 4 ITC, 6.1 payable) |
 
 ### Recurring invoices
 | Method | Path                                  | Description                                          |
@@ -306,6 +311,36 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | GET    | `/api/audit/facets`                   | Distinct actors / entities / actions for filter UI   |
 | GET    | `/api/audit/csv`                      | CSV export of the filtered query                     |
 
+## GST Returns (GSTR-1 / GSTR-3B)
+
+Open **Reports → GSTR-1 Returns** or **GSTR-3B Summary**, pick the filing month, and review every section before exporting.
+
+### What's classified where
+
+| Section   | Rule (sales + status not in draft/cancelled) |
+| --------- | -------------------------------------------- |
+| **B2B**   | Party has a valid 15-char GSTIN — one row per (invoice, tax-rate). |
+| **B2CL**  | Party has no GSTIN, interstate, **invoice value > B2CL threshold** (default ₹1,00,000, configurable via the `b2clThreshold` setting). |
+| **B2CS**  | Everything else (B2C intrastate, or B2C interstate ≤ threshold) — aggregated by (place-of-supply, rate). |
+| **CDNR**  | Credit notes whose recipient has a valid GSTIN. |
+| **CDNUR** | Credit notes whose recipient has no GSTIN.  |
+| **HSN**   | All outward supply lines, grouped by (HSN, rate, UQC). Credit notes are netted (negative). Lines without HSN raise a warning. |
+| **DOCS**  | Document series — one row per (doc-type, alpha-prefix), with from/to numeric range, total, cancelled, net. |
+
+### Trust signals built in
+
+- **Per-section CSV downloads** match the GSTN offline-tool / Tally column order exactly.
+- **Totals card** at the top of GSTR-1 reconciles taxable + IGST + CGST + SGST against the invoices for the period (credit notes subtracted).
+- **Warnings panel** flags: missing HSN codes, malformed GSTINs (treated as B2C), and credit notes without an `original_invoice_no` reference.
+- **GSTR-3B 6.1** = output liability − ITC from purchase invoices, so the user sees the net payable / refund position immediately.
+- 19 e2e scenarios exercise every classification path, the threshold split, totals reconciliation, CSV header shape, and the orphan-credit-note warning.
+
+### What's not covered in v1
+
+Out-of-scope (not common for SMB, can be added later): `EXP` (exports), `AT` / `ATADJ` (advance tax), `NIL` rated supplies as a separate section, e-commerce operator (`ECOM`) flows, reverse-charge inward supplies (`3.1(d)`).
+
+If you have specific filing scenarios that aren't covered, please open an issue with a redacted sample invoice.
+
 ## Database Schema & Migrations
 
 SQLite file lives at `server/db/muneemji.sqlite` in dev, `/app/data/muneemji.sqlite` in Docker.
@@ -323,7 +358,7 @@ npm run db:status     # list applied + pending migrations
 npm run db:migrate    # apply pending migrations
 ```
 
-Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products`, `stock_movements`, `invoices` (incl. `share_token`), `invoice_items`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
+Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products`, `stock_movements`, `invoices` (incl. `share_token`, and `original_invoice_id/no/date` for credit notes), `invoice_items`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
 
 To inspect the database directly:
 ```bash
@@ -489,11 +524,10 @@ To swap the logo, replace `client/public/logo.png` (square PNG, ~512×512 recomm
 
 ## Roadmap
 
-v1.0 ships full GST billing, POS, reports, authentication, multi-user, automated backups, Docker deployment, audit log + period lock, recurring invoices, 2FA (TOTP), bank reconciliation, public share links, and WhatsApp PDF share via the Web Share API.
+v1.0 ships full GST billing, POS, reports, authentication, multi-user, automated backups, Docker deployment, audit log + period lock, recurring invoices, 2FA (TOTP), bank reconciliation, public share links, WhatsApp PDF share via the Web Share API, and **GSTR-1 / GSTR-3B return generation** with Tally-compatible CSV export.
 
 **Next up (community ideas welcome):**
 
-- [ ] **GSTR-1 / GSTR-3B export** — Tally-compatible CSVs (B2B / B2C-Large / B2C-Small / HSN summary / Documents issued)
 - [ ] **POS barcode scanner** — USB HID scanner support, `barcode` column on products
 - [ ] **e-Invoice / IRN integration** with the GSTN portal
 - [ ] **Backup to Google Drive / S3** from the Settings panel
@@ -513,7 +547,6 @@ Contributions are very welcome — Muneem Ji is built for the community.
 4. Open a PR with a clear description of the *why*
 
 Some great first issues:
-- GSTR-1 CSV export (Tally-compatible) — see roadmap
 - POS barcode scanner support (USB HID, no native deps)
 - New invoice themes (Classic / Modern / Minimal layouts)
 - More report exports (Excel)

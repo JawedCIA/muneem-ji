@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db/db.js';
 import { HttpError } from '../middleware/errorHandler.js';
+import { buildGstr1, buildGstr3b, gstr1ToCsv } from '../utils/gstr.js';
 
 const router = Router();
 
@@ -183,6 +184,107 @@ router.get('/expense-summary', (req, res) => {
     GROUP BY substr(date, 1, 7) ORDER BY month`).all(...params);
 
   res.json({ byCategory, byMonth });
+});
+
+// ───────────────────── GSTR-1 / GSTR-3B ─────────────────────
+
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function parsePeriod(req) {
+  const period = String(req.query.period || '').trim();
+  if (!PERIOD_RE.test(period)) {
+    throw new HttpError(400, 'period must be YYYY-MM');
+  }
+  const from = `${period}-01`;
+  const [y, m] = period.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const to = `${period}-${String(lastDay).padStart(2, '0')}`;
+  return { period, from, to };
+}
+
+function loadOutwardForPeriod(from, to) {
+  const invoices = db.prepare(
+    `SELECT i.*, p.gstin AS p_gstin, p.state_code AS p_state_code, p.name AS p_name
+     FROM invoices i
+     LEFT JOIN parties p ON p.id = i.party_id
+     WHERE i.type IN ('sale', 'credit_note')
+       AND i.date >= ? AND i.date <= ?
+     ORDER BY i.no`
+  ).all(from, to);
+  const itemsStmt = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order');
+  return invoices.map((inv) => ({
+    ...inv,
+    party: { gstin: inv.p_gstin, state_code: inv.p_state_code, name: inv.p_name },
+    items: itemsStmt.all(inv.id),
+  }));
+}
+
+function loadPurchasesForPeriod(from, to) {
+  return db.prepare(
+    `SELECT * FROM invoices WHERE type = 'purchase' AND date >= ? AND date <= ?`
+  ).all(from, to);
+}
+
+function getSetting(key, fallback) {
+  const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return r?.value ?? fallback;
+}
+
+function buildGstr1ForPeriod(from, to) {
+  const invoices = loadOutwardForPeriod(from, to);
+  const businessStateCode = getSetting('stateCode', '27');
+  const b2clThreshold = Number(getSetting('b2clThreshold', '100000'));
+  return buildGstr1({ invoices, businessStateCode, b2clThreshold });
+}
+
+router.get('/gstr1', (req, res) => {
+  const { period, from, to } = parsePeriod(req);
+  const result = buildGstr1ForPeriod(from, to);
+  const counts = {
+    b2b: result.b2b.length, b2cl: result.b2cl.length, b2cs: result.b2cs.length,
+    cdnr: result.cdnr.length, cdnur: result.cdnur.length,
+    hsn: result.hsn.length, docs: result.docs.length,
+  };
+  const totals = {
+    taxable: 0, igst: 0, cgst: 0, sgst: 0, invoice_value: 0,
+  };
+  for (const r of [...result.b2b, ...result.b2cl, ...result.b2cs]) {
+    totals.taxable += Number(r.taxable_value || 0);
+    totals.igst += Number(r.igst || 0);
+    totals.cgst += Number(r.cgst || 0);
+    totals.sgst += Number(r.sgst || 0);
+  }
+  for (const r of [...result.cdnr, ...result.cdnur]) {
+    totals.taxable -= Number(r.taxable_value || 0);
+    totals.igst -= Number(r.igst || 0);
+    totals.cgst -= Number(r.cgst || 0);
+    totals.sgst -= Number(r.sgst || 0);
+  }
+  for (const k of Object.keys(totals)) totals[k] = Math.round(totals[k] * 100) / 100;
+  res.json({ period, from, to, counts, totals, ...result });
+});
+
+router.get('/gstr1/csv', (req, res) => {
+  const { period, from, to } = parsePeriod(req);
+  const section = String(req.query.section || '').toLowerCase();
+  const valid = ['b2b', 'b2cl', 'b2cs', 'cdnr', 'cdnur', 'hsn', 'docs'];
+  if (!valid.includes(section)) {
+    throw new HttpError(400, `section must be one of: ${valid.join(', ')}`);
+  }
+  const result = buildGstr1ForPeriod(from, to);
+  const csv = gstr1ToCsv(section, result[section] || []);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="gstr1_${section}_${period}.csv"`);
+  res.send(csv);
+});
+
+router.get('/gstr3b', (req, res) => {
+  const { period, from, to } = parsePeriod(req);
+  const outward = loadOutwardForPeriod(from, to);
+  const purchases = loadPurchasesForPeriod(from, to);
+  const businessStateCode = getSetting('stateCode', '27');
+  const result = buildGstr3b({ outward, purchases, businessStateCode });
+  res.json({ period, from, to, ...result });
 });
 
 export default router;

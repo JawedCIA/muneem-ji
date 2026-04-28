@@ -5,9 +5,14 @@ All notable changes to Muneem Ji are recorded here. The format follows [Keep a C
 ## [Unreleased]
 
 ### Added
+- **GSTR-1 returns** — full B2B, B2CL (with configurable ₹1L threshold), B2CS, CDNR, CDNUR, HSN summary, and Documents-Issued sections. Per-section CSV download matching the GSTN offline-tool / Tally column order. Top-of-page totals card reconciles to the underlying invoices (credit notes netted). Warnings panel flags missing HSN, malformed GSTINs, and credit notes missing the `original_invoice_no` reference.
+- **GSTR-3B summary** — read-only summary of 3.1(a) outward taxable, 3.1(c) nil/exempt, 3.2 interstate B2C by place-of-supply, 4(A)(5) ITC from purchases, and 6.1 net tax payable.
+- `migrations/008_gst_returns.sql` — adds `original_invoice_id / original_invoice_no / original_invoice_date` columns on `invoices` (used by credit notes for CDNR/CDNUR) and seeds the `b2clThreshold` setting (default `100000`).
+- 19 new e2e scenarios covering classification, threshold split, totals reconciliation, CSV header shape, validation, and the orphan-credit-note warning. Test suite is now **137 / 137**.
 - `.gitattributes` — normalize all text files to LF in the repo, mark binaries explicitly. Keeps Windows checkouts clean.
 
 ### Changed
+- Reports page — old "GSTR-1 Format" tab (rate-summary stub) replaced by the real GSTR-1 returns view with section tabs, counts, totals, warnings, and per-section CSV downloads. New "GSTR-3B Summary" tab added alongside.
 - README — replaced `<your-username>/muneemji.git` placeholders with the real `JawedCIA/muneem-ji` repo URL.
 - README — refreshed Features list to surface public share links, audit log, period lock, 2FA, recurring invoices, bank reconciliation, and Web Share API PDF attach (previously hidden under a single "WhatsApp share — wa.me link" line).
 - README — expanded API reference with the Public, TOTP, Recurring, Bank, and Audit endpoint tables; added the `/api/invoices/:id/share` row.

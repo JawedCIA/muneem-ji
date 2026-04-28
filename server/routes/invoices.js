@@ -33,6 +33,9 @@ const invoiceSchema = z.object({
   discount: z.coerce.number().optional().default(0),
   status: z.enum(['draft','sent','paid','partial','overdue','cancelled','accepted','rejected','expired']).default('draft'),
   notes: z.string().optional().nullable(),
+  original_invoice_id: z.string().nullable().optional(),
+  original_invoice_no: z.string().nullable().optional(),
+  original_invoice_date: z.string().nullable().optional(),
   items: z.array(itemSchema).min(1, 'At least one line item required'),
 });
 
@@ -149,11 +152,14 @@ router.post('/', validate(invoiceSchema), (req, res) => {
     status: body.status,
     notes: body.notes || null,
     share_token: newShareToken(),
+    original_invoice_id: body.type === 'credit_note' ? (body.original_invoice_id || null) : null,
+    original_invoice_no: body.type === 'credit_note' ? (body.original_invoice_no || null) : null,
+    original_invoice_date: body.type === 'credit_note' ? (body.original_invoice_date || null) : null,
   };
   db.transaction(() => {
     db.prepare(`INSERT INTO invoices
-      (id, no, type, date, due_date, party_id, party_name, interstate, subtotal, discount, cgst_total, sgst_total, igst_total, total, amount_paid, status, notes, share_token)
-      VALUES (@id, @no, @type, @date, @due_date, @party_id, @party_name, @interstate, @subtotal, @discount, @cgst_total, @sgst_total, @igst_total, @total, @amount_paid, @status, @notes, @share_token)`).run(inv);
+      (id, no, type, date, due_date, party_id, party_name, interstate, subtotal, discount, cgst_total, sgst_total, igst_total, total, amount_paid, status, notes, share_token, original_invoice_id, original_invoice_no, original_invoice_date)
+      VALUES (@id, @no, @type, @date, @due_date, @party_id, @party_name, @interstate, @subtotal, @discount, @cgst_total, @sgst_total, @igst_total, @total, @amount_paid, @status, @notes, @share_token, @original_invoice_id, @original_invoice_no, @original_invoice_date)`).run(inv);
     calc.items.forEach((it, i) => {
       db.prepare(`INSERT INTO invoice_items
         (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
@@ -204,11 +210,16 @@ router.put('/:id', validate(invoiceSchema), (req, res) => {
       total: calc.total,
       status: body.status,
       notes: body.notes || null,
+      original_invoice_id: body.type === 'credit_note' ? (body.original_invoice_id || null) : null,
+      original_invoice_no: body.type === 'credit_note' ? (body.original_invoice_no || null) : null,
+      original_invoice_date: body.type === 'credit_note' ? (body.original_invoice_date || null) : null,
     };
     db.prepare(`UPDATE invoices SET
       no=@no, type=@type, date=@date, due_date=@due_date, party_id=@party_id, party_name=@party_name,
       interstate=@interstate, subtotal=@subtotal, discount=@discount, cgst_total=@cgst_total,
       sgst_total=@sgst_total, igst_total=@igst_total, total=@total, status=@status, notes=@notes,
+      original_invoice_id=@original_invoice_id, original_invoice_no=@original_invoice_no,
+      original_invoice_date=@original_invoice_date,
       updated_at=datetime('now') WHERE id=@id`).run(inv);
     calc.items.forEach((it, i) => {
       db.prepare(`INSERT INTO invoice_items

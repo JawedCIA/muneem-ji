@@ -1026,6 +1026,174 @@ async function run() {
     return 'covered by self-delete check';
   });
 
+  // --- GSTR-1 / GSTR-3B (Reports → GST Returns) ---
+  // Build a fresh April-2026 dataset that exercises every classification path.
+  let gstrPeriod = '2026-04';
+  let gstrInvoices = {};
+  await step('GSTR setup: B2B intrastate party', async () => {
+    const r = await req('POST', '/parties', {
+      name: 'B2B Intrastate Co', type: 'customer',
+      gstin: '27AAACI1234F1Z5', state_code: '27', state_name: 'Maharashtra',
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    gstrInvoices.b2bIntraParty = r.body.id;
+  });
+  await step('GSTR setup: B2B interstate party', async () => {
+    const r = await req('POST', '/parties', {
+      name: 'B2B Interstate Co', type: 'customer',
+      gstin: '29AABCI5678G1Z9', state_code: '29', state_name: 'Karnataka',
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    gstrInvoices.b2bInterParty = r.body.id;
+  });
+  await step('GSTR setup: B2C interstate party (no GSTIN, for B2CL)', async () => {
+    const r = await req('POST', '/parties', {
+      name: 'Walk-in Delhi Customer', type: 'customer',
+      state_code: '07', state_name: 'Delhi',
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    gstrInvoices.b2clParty = r.body.id;
+  });
+  await step('GSTR setup: B2C intrastate (no GSTIN, for B2CS)', async () => {
+    const r = await req('POST', '/parties', {
+      name: 'Local Walk-in', type: 'customer',
+      state_code: '27', state_name: 'Maharashtra',
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    gstrInvoices.b2csParty = r.body.id;
+  });
+
+  await step('GSTR setup: B2B intrastate sale (CGST/SGST)', async () => {
+    const r = await req('POST', '/invoices', {
+      no: 'GSTR-001', type: 'sale', date: `${gstrPeriod}-05`,
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      items: [{ name: 'Widget', hsn_code: '8471', qty: 10, rate: 1000, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    assert(r.body.cgst_total > 0 && r.body.igst_total === 0, 'intrastate should be CGST/SGST');
+  });
+
+  await step('GSTR setup: B2B interstate sale (IGST)', async () => {
+    const r = await req('POST', '/invoices', {
+      no: 'GSTR-002', type: 'sale', date: `${gstrPeriod}-06`,
+      party_id: gstrInvoices.b2bInterParty, status: 'sent',
+      items: [{ name: 'Widget', hsn_code: '8471', qty: 5, rate: 2000, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    assert(r.body.igst_total > 0 && r.body.cgst_total === 0, 'interstate should be IGST');
+  });
+
+  await step('GSTR setup: B2CL — interstate B2C above ₹1L threshold', async () => {
+    const r = await req('POST', '/invoices', {
+      no: 'GSTR-003', type: 'sale', date: `${gstrPeriod}-07`,
+      party_id: gstrInvoices.b2clParty, status: 'sent',
+      items: [{ name: 'Bulk gadget', hsn_code: '8517', qty: 1, rate: 150000, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    assert(r.body.total > 100000, 'should be > B2CL threshold');
+  });
+
+  await step('GSTR setup: B2CS — small intrastate sale', async () => {
+    const r = await req('POST', '/invoices', {
+      no: 'GSTR-004', type: 'sale', date: `${gstrPeriod}-08`,
+      party_id: gstrInvoices.b2csParty, status: 'sent',
+      items: [{ name: 'Cable', hsn_code: '8544', qty: 4, rate: 500, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+  });
+
+  await step('GSTR setup: Credit note for B2B intrastate (CDNR)', async () => {
+    const r = await req('POST', '/invoices', {
+      no: 'CN-001', type: 'credit_note', date: `${gstrPeriod}-15`,
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      original_invoice_no: 'GSTR-001', original_invoice_date: `${gstrPeriod}-05`,
+      items: [{ name: 'Widget return', hsn_code: '8471', qty: 1, rate: 1000, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    gstrInvoices.cnId = r.body.id;
+  });
+
+  await step('GET /reports/gstr1 — classification + counts', async () => {
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.status === 200, `status=${r.status} body=${JSON.stringify(r.body).slice(0, 300)}`);
+    assert(r.body.counts.b2b === 2, `b2b expected 2 got ${r.body.counts.b2b}`); // 2 invoices, 1 rate each
+    assert(r.body.counts.b2cl === 1, `b2cl expected 1 got ${r.body.counts.b2cl}`);
+    assert(r.body.counts.b2cs === 1, `b2cs expected 1 got ${r.body.counts.b2cs}`);
+    assert(r.body.counts.cdnr === 1, `cdnr expected 1 got ${r.body.counts.cdnr}`);
+    assert(r.body.counts.cdnur === 0, `cdnur expected 0 got ${r.body.counts.cdnur}`);
+    assert(r.body.counts.hsn >= 3, `hsn expected ≥3 got ${r.body.counts.hsn}`);
+    return `b2b=${r.body.counts.b2b} b2cl=${r.body.counts.b2cl} b2cs=${r.body.counts.b2cs} cdnr=${r.body.counts.cdnr}`;
+  });
+
+  await step('GSTR-1 totals reconcile to invoice totals', async () => {
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    // Sales: 10000 + 10000 + 150000 + 2000 = 172000 taxable; CN: -1000
+    const expectedTaxable = 10000 + 10000 + 150000 + 2000 - 1000;
+    const got = Math.round(r.body.totals.taxable);
+    assert(got === expectedTaxable, `taxable expected ${expectedTaxable} got ${got}`);
+    return `taxable=${got}`;
+  });
+
+  await step('GSTR-1 B2CL place-of-supply is Delhi (07)', async () => {
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.body.b2cl[0]?.place_of_supply === '07', `pos=${r.body.b2cl[0]?.place_of_supply}`);
+  });
+
+  await step('GSTR-1 CDNR carries original invoice ref', async () => {
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.body.cdnr[0]?.original_invoice_no === 'GSTR-001', `orig=${r.body.cdnr[0]?.original_invoice_no}`);
+    assert(r.body.cdnr[0]?.note_type === 'C', 'should be Credit type');
+  });
+
+  await step('GSTR-1 DOCS section lists invoice + credit-note series', async () => {
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.body.docs.length >= 2, `docs sections expected ≥2 got ${r.body.docs.length}`);
+    const invoiceSeries = r.body.docs.find(d => d.doc_type_code === 1);
+    assert(invoiceSeries && invoiceSeries.total === 4, `invoice series total=${invoiceSeries?.total}`);
+  });
+
+  await step('GSTR-1 CSV export — b2b section', async () => {
+    const r = await req('GET', `/reports/gstr1/csv?period=${gstrPeriod}&section=b2b`);
+    assert(r.status === 200, `status=${r.status}`);
+    const text = typeof r.body === 'string' ? r.body : '';
+    assert(text.startsWith('GSTIN/UIN of Recipient'), `header=${text.slice(0, 60)}`);
+    assert(text.includes('27AAACI1234F1Z5'), 'B2B GSTIN should appear in CSV');
+  });
+
+  await step('GSTR-1 CSV export — invalid section → 400', async () => {
+    const r = await req('GET', `/reports/gstr1/csv?period=${gstrPeriod}&section=junk`);
+    assert(r.status === 400, `status=${r.status}`);
+  });
+
+  await step('GSTR-1 invalid period → 400', async () => {
+    const r = await req('GET', `/reports/gstr1?period=2026-13`);
+    assert(r.status === 400, `status=${r.status}`);
+  });
+
+  await step('GET /reports/gstr3b — output reconciles to GSTR-1', async () => {
+    const r = await req('GET', `/reports/gstr3b?period=${gstrPeriod}`);
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.s31a, '3.1(a) section missing');
+    const s = r.body.s31a;
+    // Sales taxable - CN taxable = 172000 - 1000 = 171000
+    assert(Math.round(s.taxable) === 171000, `s31a.taxable expected 171000 got ${s.taxable}`);
+    // 3.2 should have a Delhi row from B2CL
+    const delhi = r.body.s32.rows.find(x => x.place_of_supply === '07');
+    assert(delhi, '3.2 should include Delhi (07) for the B2CL invoice');
+  });
+
+  await step('GSTR-1 warns on credit note missing original ref', async () => {
+    // Create an "orphan" credit note
+    const cn = await req('POST', '/invoices', {
+      no: 'CN-002', type: 'credit_note', date: `${gstrPeriod}-20`,
+      party_id: gstrInvoices.b2csParty, status: 'sent',
+      items: [{ name: 'Adjustment', hsn_code: '8544', qty: 1, rate: 100, tax_rate: 18, unit: 'NOS' }],
+    });
+    assert(cn.status === 201, `cn status=${cn.status}`);
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.body.warnings.some(w => w.invoice_no === 'CN-002'), 'orphan CN should produce a warning');
+  });
+
   // --- SUMMARY ---
   console.log('');
   const failed = results.filter((r) => !r.ok);
