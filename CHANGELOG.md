@@ -2,6 +2,19 @@
 
 All notable changes to Muneem Ji are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- `.gitattributes` — normalize all text files to LF in the repo, mark binaries explicitly. Keeps Windows checkouts clean.
+
+### Changed
+- README — replaced `<your-username>/muneemji.git` placeholders with the real `JawedCIA/muneem-ji` repo URL.
+- README — refreshed Features list to surface public share links, audit log, period lock, 2FA, recurring invoices, bank reconciliation, and Web Share API PDF attach (previously hidden under a single "WhatsApp share — wa.me link" line).
+- README — expanded API reference with the Public, TOTP, Recurring, Bank, and Audit endpoint tables; added the `/api/invoices/:id/share` row.
+- README — schema table list now includes `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, and the TOTP columns on `users`.
+- README — Project Structure refreshed (real route names, migrations folder, e2e file, Docker + .env.example, .github/).
+- README — Roadmap updated: items shipped in v1.0 (recurring, audit, 2FA, bank rec) removed; GSTR-1/3B export and POS barcode scanner promoted to "next up".
+
 ## [1.0.0] — 2026-04-26
 
 First public open-source release. Combines Phase 1 production hardening and Phase 2 feature work into one shippable foundation.

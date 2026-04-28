@@ -71,7 +71,13 @@ If you're a shop owner, a developer building for one, or just someone who believ
 - **Indian number formatting** — `₹1,23,456.00`, not `$1,234,567.00`
 - **Print-optimized invoices** — A4 layout, sidebar/chrome hidden, ready for sharing
 - **PDF download** via `@react-pdf/renderer`
-- **WhatsApp share** — generates `wa.me` link with invoice details
+- **Public share links** — every invoice/quotation has a 128-bit share token; customers can open `/i/:token` or `/q/:token` without logging in (rate-limited, branding-whitelisted, read-only)
+- **WhatsApp share** — pre-fills a `wa.me` message with the share link and an editable per-shop template; on mobile (Android Chrome / iOS 15.4+) the OS share sheet attaches the PDF natively to WhatsApp
+- **Audit log** — every mutating action is recorded with actor, before/after JSON, and auto-redaction of password / token fields
+- **Period lock** — close an accounting period in Settings to prevent edits to dates inside it (HTTP 423)
+- **Two-factor auth** — RFC 6238 TOTP, QR enrolment, backup codes, two-stage login (no external dep)
+- **Recurring invoices** — weekly / monthly / quarterly / yearly templates, hourly scheduler, manual run + pause/resume
+- **Bank reconciliation** — CSV import with auto column-detection (HDFC / ICICI / SBI variants), match against payments or expenses
 - **Keyboard shortcuts** — `N` for new invoice, `/` to search, `Esc` to close
 - **Skeleton loaders** instead of empty flashes
 - **Toast notifications** instead of jarring `alert()` boxes
@@ -98,8 +104,8 @@ If you're a shop owner, a developer building for one, or just someone who believ
 The fastest way to get a real shop running. Requires only [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac) or Docker Engine (Linux).
 
 ```bash
-git clone https://github.com/<your-username>/muneemji.git
-cd muneemji
+git clone https://github.com/JawedCIA/muneem-ji.git
+cd muneem-ji
 docker compose up -d
 ```
 
@@ -126,8 +132,8 @@ To customise the public port, JWT secret, CORS origin, or backup schedule, copy 
 - Windows, macOS, or Linux
 
 ```bash
-git clone https://github.com/<your-username>/muneemji.git
-cd muneemji
+git clone https://github.com/JawedCIA/muneem-ji.git
+cd muneem-ji
 npm run install:all          # install root + client + server deps
 npm run dev                  # start frontend (5173) + backend (3001)
 ```
@@ -154,38 +160,47 @@ npm start            # start in production mode (Express serves API + client/dis
 ## Project Structure
 
 ```
-muneemji/
+muneem-ji/
 ├── client/                        # React frontend
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── ui/                # Shared: Button, Modal, Input, Badge, Table…
 │   │   │   ├── layout/            # Sidebar, Header, Layout wrapper
-│   │   │   └── invoice/           # InvoiceForm, InvoicePreview
-│   │   ├── pages/                 # Dashboard, Invoices, POS, Reports, Settings…
+│   │   │   └── invoice/           # InvoiceForm, InvoicePreview, WhatsAppShareDialog
+│   │   ├── pages/                 # Dashboard, Invoices, POS, Reports, Settings,
+│   │   │                          # PublicInvoice (read-only share view)…
 │   │   ├── store/                 # Zustand stores (settings, toast)
-│   │   ├── utils/                 # api, format (Indian ₹), gst, validators, pdf
+│   │   ├── utils/                 # api, format (Indian ₹), gst, validators, pdf,
+│   │   │                          # whatsapp, share (Web Share API)
 │   │   └── App.jsx
 │   ├── public/logo.png
 │   └── index.html
 │
 ├── server/                        # Express backend
 │   ├── db/
-│   │   ├── schema.sql             # Full SQLite schema with indexes
-│   │   ├── seed.js                # Realistic seed data
+│   │   ├── migrations/            # Forward-only NNN_*.sql (auto-applied on boot)
+│   │   ├── migrate.js             # Migration runner with checksum drift detection
+│   │   ├── seed.js                # Realistic seed data (refuses if a user exists)
 │   │   └── db.js                  # better-sqlite3 connection
-│   ├── routes/                    # parties, products, invoices, payments,
-│   │                              # expenses, reports, settings
-│   ├── middleware/                # Zod validation, error handler
-│   ├── utils/gstCalc.js           # CGST/SGST/IGST math
+│   ├── routes/                    # auth, parties, products, invoices, payments,
+│   │                              # expenses, reports, settings, recurring, bank,
+│   │                              # audit, backup, public (share-link viewer)
+│   ├── middleware/                # Zod validation, requireAuth, error handler
+│   ├── utils/                     # gstCalc, audit, periodLock, pagination, totp
+│   ├── test/e2e.mjs               # 118 end-to-end smoke scenarios
 │   └── index.js                   # Express app entry
 │
-├── package.json                   # Root scripts (dev/install)
-└── BRIEF.md                       # Original product brief
+├── Dockerfile, docker-compose.yml # Single image: Express serves API + React
+├── .env.example                   # Documented production environment vars
+├── package.json                   # Root scripts (dev / install:all / docker:*)
+├── BRIEF.md                       # Original product brief
+├── CHANGELOG.md, CONTRIBUTING.md, SECURITY.md
+└── .github/                       # Issue + PR templates
 ```
 
 ## API Reference
 
-All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` by default. Every route except `/api/health` and `/api/auth/*` requires a valid session cookie.
+All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` by default. Every route except `/api/health`, `/api/auth/status`, `/api/auth/setup`, `/api/auth/login`, and `/api/public/*` requires a valid session cookie.
 
 ### Auth
 | Method | Path                                  | Description                                |
@@ -200,6 +215,16 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | POST   | `/api/auth/users`                     | Create user (admin)                        |
 | PUT    | `/api/auth/users/:id`                 | Update name/role/active/password (admin)   |
 | DELETE | `/api/auth/users/:id`                 | Delete user (admin, can't be self/last)    |
+| POST   | `/api/auth/2fa/setup`                 | Begin TOTP enrolment (returns secret + QR) |
+| POST   | `/api/auth/2fa/enable`                | Confirm enrolment with a 6-digit code      |
+| POST   | `/api/auth/2fa/disable`               | Disable TOTP for self                      |
+| GET    | `/api/auth/2fa/status`                | Whether the current user has TOTP enabled  |
+
+### Public (no auth, rate-limited)
+| Method | Path                                  | Description                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/public/invoice/:token`          | Read-only invoice by share token (with branding)     |
+| GET    | `/api/public/quotation/:token`        | Read-only quotation by share token (with branding)   |
 
 ### Backup
 | Method | Path                                  | Description                                |
@@ -232,6 +257,7 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | DELETE | `/api/invoices/:id`                   | Delete invoice (reverses stock)            |
 | PATCH  | `/api/invoices/:id/status`            | Update status                              |
 | POST   | `/api/invoices/:id/convert`           | Convert quotation → invoice                |
+| POST   | `/api/invoices/:id/share`             | Log a share event (channel + recipient)    |
 | GET    | `/api/payments?invoice_id=&party_id=` | List payments                              |
 | POST   | `/api/payments`                       | Record payment                             |
 | DELETE | `/api/payments/:id`                   | Delete payment                             |
@@ -245,6 +271,40 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | GET    | `/api/reports/pl`                     | Profit & Loss                              |
 | GET    | `/api/reports/party-ledger/:id`       | Party ledger with running balance          |
 | GET    | `/api/reports/expense-summary`        | Expense breakdown                          |
+
+### Recurring invoices
+| Method | Path                                  | Description                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/recurring`                      | List recurring templates                             |
+| POST   | `/api/recurring`                      | Create template (frequency, next_run, etc.)         |
+| GET    | `/api/recurring/:id`                  | Template detail                                      |
+| PUT    | `/api/recurring/:id`                  | Update template                                      |
+| DELETE | `/api/recurring/:id`                  | Delete template                                      |
+| POST   | `/api/recurring/:id/run`              | Generate the next invoice now                        |
+| POST   | `/api/recurring/:id/pause`            | Pause the schedule                                   |
+| POST   | `/api/recurring/:id/resume`           | Resume the schedule                                  |
+
+### Bank reconciliation
+| Method | Path                                  | Description                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/bank/accounts`                  | List bank accounts                                   |
+| POST   | `/api/bank/accounts`                  | Create bank account                                  |
+| PUT    | `/api/bank/accounts/:id`              | Update bank account                                  |
+| DELETE | `/api/bank/accounts/:id`              | Delete bank account                                  |
+| POST   | `/api/bank/peek`                      | Preview a CSV statement (column auto-detect)         |
+| POST   | `/api/bank/import`                    | Import a CSV statement into bank_lines               |
+| GET    | `/api/bank/lines`                     | List statement lines (filter by account/date/match)  |
+| DELETE | `/api/bank/lines/:id`                 | Delete a single statement line                       |
+| POST   | `/api/bank/match`                     | Match a line to a payment or expense                 |
+| DELETE | `/api/bank/match/:id`                 | Unmatch                                              |
+| GET    | `/api/bank/suggestions/:line_id`      | ±0.01 / ±7-day match suggestions for a line          |
+
+### Audit log
+| Method | Path                                  | Description                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/audit`                          | Paginated audit entries (filters: actor, entity, …)  |
+| GET    | `/api/audit/facets`                   | Distinct actors / entities / actions for filter UI   |
+| GET    | `/api/audit/csv`                      | CSV export of the filtered query                     |
 
 ## Database Schema & Migrations
 
@@ -263,7 +323,7 @@ npm run db:status     # list applied + pending migrations
 npm run db:migrate    # apply pending migrations
 ```
 
-Tables: `users`, `settings`, `parties`, `products`, `stock_movements`, `invoices`, `invoice_items`, `payments`, `expenses`, `schema_migrations`.
+Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products`, `stock_movements`, `invoices` (incl. `share_token`), `invoice_items`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
 
 To inspect the database directly:
 ```bash
@@ -429,19 +489,19 @@ To swap the logo, replace `client/public/logo.png` (square PNG, ~512×512 recomm
 
 ## Roadmap
 
-The current build covers the full Phase 1 scope: full GST billing, POS, reports, **authentication, multi-user, automated backups, and Docker deployment**. Ideas for future versions:
+v1.0 ships full GST billing, POS, reports, authentication, multi-user, automated backups, Docker deployment, audit log + period lock, recurring invoices, 2FA (TOTP), bank reconciliation, public share links, and WhatsApp PDF share via the Web Share API.
 
-- [ ] Recurring invoices
-- [ ] e-Invoice / IRN integration
-- [ ] Multi-business / multi-tenant SaaS mode
-- [ ] Bank reconciliation
-- [ ] Mobile app (React Native sharing the API)
-- [ ] Cloud sync (optional, encrypted)
-- [ ] WhatsApp Business API integration for payment reminders
-- [ ] Backup-to-Drive / S3 from the Settings panel
-- [ ] Hindi / regional-language UI
-- [ ] Audit log of every change (who, when, before/after)
-- [ ] 2FA / TOTP for admin accounts
+**Next up (community ideas welcome):**
+
+- [ ] **GSTR-1 / GSTR-3B export** — Tally-compatible CSVs (B2B / B2C-Large / B2C-Small / HSN summary / Documents issued)
+- [ ] **POS barcode scanner** — USB HID scanner support, `barcode` column on products
+- [ ] **e-Invoice / IRN integration** with the GSTN portal
+- [ ] **Backup to Google Drive / S3** from the Settings panel
+- [ ] **Hindi / regional-language UI** (i18n scaffolding first)
+- [ ] **WhatsApp Business API** for payment reminders (vs. the current Web Share / `wa.me` link)
+- [ ] **Multi-business / multi-tenant** SaaS mode
+- [ ] **Mobile app** (React Native sharing the same API)
+- [ ] **Cloud sync** (optional, encrypted, opt-in only)
 
 ## Contributing
 
@@ -453,9 +513,10 @@ Contributions are very welcome — Muneem Ji is built for the community.
 4. Open a PR with a clear description of the *why*
 
 Some great first issues:
+- GSTR-1 CSV export (Tally-compatible) — see roadmap
+- POS barcode scanner support (USB HID, no native deps)
 - New invoice themes (Classic / Modern / Minimal layouts)
-- More report exports (Excel, PDF)
-- Dockerfile + docker-compose
+- More report exports (Excel)
 - i18n scaffolding (Hindi first)
 - Screenshots for the README
 
