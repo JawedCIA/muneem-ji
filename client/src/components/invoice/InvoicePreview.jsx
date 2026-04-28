@@ -76,13 +76,20 @@ export default function InvoicePreview({ invoice, settings }) {
           <tbody>
             {invoice.items?.map((it, i) => (
               <tr key={it.id || i} className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-500">{i + 1}</td>
-                <td className="px-3 py-2 text-navy font-medium">{it.name}</td>
-                {gstOn && <td className="px-3 py-2 font-mono text-xs">{it.hsn_code || '—'}</td>}
-                <td className="px-3 py-2 text-right">{it.qty} {it.unit}</td>
-                <td className="px-3 py-2 text-right">{formatINR(it.rate)}</td>
-                {gstOn && <td className="px-3 py-2 text-right">{it.tax_rate}%</td>}
-                <td className="px-3 py-2 text-right font-semibold text-navy">{formatINR(it.total)}</td>
+                <td className="px-3 py-2 text-slate-500 align-top">{i + 1}</td>
+                <td className="px-3 py-2 text-navy font-medium align-top">
+                  {it.name}
+                  {it.serials?.length > 0 && (
+                    <div className="text-[10px] font-mono text-slate-500 mt-1 leading-relaxed">
+                      <span className="font-bold text-amber-700">S/N:</span> {it.serials.join(', ')}
+                    </div>
+                  )}
+                </td>
+                {gstOn && <td className="px-3 py-2 font-mono text-xs align-top">{it.hsn_code || '—'}</td>}
+                <td className="px-3 py-2 text-right align-top">{it.qty} {it.unit}</td>
+                <td className="px-3 py-2 text-right align-top">{formatINR(it.rate)}</td>
+                {gstOn && <td className="px-3 py-2 text-right align-top">{it.tax_rate}%</td>}
+                <td className="px-3 py-2 text-right font-semibold text-navy align-top">{formatINR(it.total)}</td>
               </tr>
             ))}
           </tbody>

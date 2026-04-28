@@ -173,6 +173,36 @@ function ProductForm({ open, initial, onClose, onSaved }) {
         </Select>
         <Input type="number" min="0" step="0.01" label="Current Stock" value={form.stock} onChange={(e) => setForm({ ...form, stock: parseFloat(e.target.value) || 0 })} />
         <Input type="number" min="0" step="0.01" label="Min Stock (alert)" value={form.min_stock} onChange={(e) => setForm({ ...form, min_stock: parseFloat(e.target.value) || 0 })} />
+        <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.has_serial && form.has_serial !== '0'}
+              onChange={(e) => setForm({ ...form, has_serial: e.target.checked ? 1 : 0 })}
+              className="mt-0.5 rounded border-slate-300 text-amber focus:ring-amber/40"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy">This product has serial / IMEI numbers</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                For appliances, electronics, mobile phones, jewellery — every unit is tracked individually.
+                You'll be asked to enter one serial per piece while billing.
+              </div>
+            </div>
+          </label>
+          {!!form.has_serial && form.has_serial !== '0' && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min="0"
+                max="600"
+                label="Default Warranty (months)"
+                value={form.warranty_months ?? ''}
+                onChange={(e) => setForm({ ...form, warranty_months: e.target.value === '' ? null : Number(e.target.value) })}
+                hint="e.g. 12 for 1 year, 24 for 2 years. Leave blank if no warranty."
+              />
+            </div>
+          )}
+        </div>
         <div className="md:col-span-2"><Textarea label="Description" rows="2" value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
       </div>
     </Modal>
@@ -222,5 +252,5 @@ function StockAdjustModal({ target, onClose, onSaved }) {
 }
 
 function empty() {
-  return { name: '', sku: '', category: '', description: '', hsn_code: '', unit: 'Nos', sale_price: 0, buy_price: 0, tax_rate: 18, stock: 0, min_stock: 0 };
+  return { name: '', sku: '', category: '', description: '', hsn_code: '', unit: 'Nos', sale_price: 0, buy_price: 0, tax_rate: 18, stock: 0, min_stock: 0, has_serial: 0, warranty_months: null };
 }

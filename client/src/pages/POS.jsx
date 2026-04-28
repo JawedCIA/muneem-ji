@@ -100,8 +100,15 @@ export default function POS() {
         name: p.name, hsn_code: p.hsn_code, unit: p.unit,
         sale_price: p.sale_price, tax_rate: p.tax_rate,
         qty: 1, is_custom: false,
+        has_serial: !!p.has_serial && p.has_serial !== 0,
+        warranty_months: p.warranty_months ?? null,
+        serials: [],
       }];
     });
+  }
+
+  function setSerials(cart_id, serials) {
+    setCart((c) => c.map((x) => x.cart_id === cart_id ? { ...x, serials } : x));
   }
 
   function addCustomItem({ name, price, qty, tax_rate, unit }) {
@@ -147,6 +154,7 @@ export default function POS() {
           unit: c.unit,
           rate: c.sale_price,
           tax_rate: c.tax_rate,
+          serials: c.has_serial ? (c.serials || []).map((s) => String(s).trim()).filter(Boolean) : [],
         })),
       };
       const inv = await api.post('/invoices', payload);
@@ -248,6 +256,20 @@ export default function POS() {
                             </select>
                           </div>
                         )}
+                      </div>
+                    )}
+                    {it.has_serial && (
+                      <div className="pl-1">
+                        <div className="text-[10px] uppercase tracking-wider text-amber-700 font-bold mb-0.5">
+                          Serial / IMEI · {(it.serials || []).filter((s) => String(s).trim()).length}/{it.qty}
+                        </div>
+                        <textarea
+                          rows={Math.min(Math.max(it.qty, 1), 4)}
+                          className="input py-1 text-xs font-mono bg-amber-50/50"
+                          placeholder={`Enter ${it.qty} serial(s), one per line`}
+                          value={(it.serials || []).join('\n')}
+                          onChange={(e) => setSerials(it.cart_id, e.target.value.split('\n').map((s) => s.replace(/\r/g, '')))}
+                        />
                       </div>
                     )}
                   </div>

@@ -101,11 +101,19 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
               React.createElement(Text, { style: [styles.th, { width: '14%', textAlign: 'right' }] }, 'Rate'),
               React.createElement(Text, { style: [styles.th, { width: '14%', textAlign: 'right' }] }, 'Amount'),
             ),
-        ...(invoice.items || []).map((it, i) =>
-          gstOn
+        ...(invoice.items || []).map((it, i) => {
+          const itemCell = it.serials?.length
+            ? React.createElement(View, { style: { flexDirection: 'column' } },
+                React.createElement(Text, { style: { fontWeight: 'bold' } }, it.name),
+                React.createElement(Text, { style: { fontSize: 7, color: '#64748b', marginTop: 2 } },
+                  `S/N: ${it.serials.join(', ')}`
+                ),
+              )
+            : React.createElement(Text, { style: { fontWeight: 'bold' } }, it.name);
+          return gstOn
             ? React.createElement(View, { style: styles.trow, key: i },
                 React.createElement(Text, { style: [styles.td, { width: '5%' }] }, String(i + 1)),
-                React.createElement(Text, { style: [styles.td, { width: '40%', fontWeight: 'bold' }] }, it.name),
+                React.createElement(View, { style: [styles.td, { width: '40%' }] }, itemCell),
                 React.createElement(Text, { style: [styles.td, { width: '12%' }] }, it.hsn_code || '—'),
                 React.createElement(Text, { style: [styles.td, { width: '10%', textAlign: 'right' }] }, `${it.qty} ${it.unit}`),
                 React.createElement(Text, { style: [styles.td, { width: '13%', textAlign: 'right' }] }, formatINR(it.rate)),
@@ -114,12 +122,12 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
               )
             : React.createElement(View, { style: styles.trow, key: i },
                 React.createElement(Text, { style: [styles.td, { width: '5%' }] }, String(i + 1)),
-                React.createElement(Text, { style: [styles.td, { width: '55%', fontWeight: 'bold' }] }, it.name),
+                React.createElement(View, { style: [styles.td, { width: '55%' }] }, itemCell),
                 React.createElement(Text, { style: [styles.td, { width: '12%', textAlign: 'right' }] }, `${it.qty} ${it.unit}`),
                 React.createElement(Text, { style: [styles.td, { width: '14%', textAlign: 'right' }] }, formatINR(it.rate)),
                 React.createElement(Text, { style: [styles.td, { width: '14%', textAlign: 'right', fontWeight: 'bold' }] }, formatINR(it.total)),
-              )
-        ),
+              );
+        }),
       ),
 
       React.createElement(View, { style: styles.totals },

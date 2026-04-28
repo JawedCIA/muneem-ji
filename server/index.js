@@ -22,6 +22,7 @@ import auditRoutes from './routes/audit.js';
 import recurringRoutes from './routes/recurring.js';
 import bankRoutes from './routes/bank.js';
 import publicRoutes from './routes/public.js';
+import serialsRoutes from './routes/serials.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { startBackupScheduler } from './utils/backupScheduler.js';
@@ -83,6 +84,7 @@ app.use('/api/demo', requireAuth, demoRoutes);
 app.use('/api/audit', requireAuth, auditRoutes);
 app.use('/api/recurring', requireAuth, recurringRoutes);
 app.use('/api/bank', requireAuth, bankRoutes);
+app.use('/api/serials', requireAuth, serialsRoutes);
 
 app.use('/api', notFound);
 

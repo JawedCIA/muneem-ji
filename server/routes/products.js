@@ -21,6 +21,8 @@ const productSchema = z.object({
   tax_rate: z.coerce.number().min(0).optional().default(18),
   stock: z.coerce.number().optional().default(0),
   min_stock: z.coerce.number().optional().default(0),
+  has_serial: z.union([z.boolean(), z.number(), z.string()]).optional().default(0),
+  warranty_months: z.coerce.number().int().min(0).max(600).nullable().optional(),
 });
 
 const stockAdjustSchema = z.object({
@@ -41,6 +43,12 @@ function normalizeProduct(body) {
   if (out.tax_rate === undefined) out.tax_rate = 18;
   if (out.stock === undefined) out.stock = 0;
   if (out.min_stock === undefined) out.min_stock = 0;
+  out.has_serial = (out.has_serial === true || out.has_serial === 1 || out.has_serial === '1') ? 1 : 0;
+  if (out.warranty_months === undefined || out.warranty_months === '' || out.warranty_months === null) {
+    out.warranty_months = null;
+  } else {
+    out.warranty_months = Number(out.warranty_months);
+  }
   return out;
 }
 
@@ -67,8 +75,8 @@ router.post('/', validate(productSchema), (req, res) => {
   const p = normalizeProduct({ id, ...req.body });
   if (!p.sku) p.sku = `SKU-${id.slice(0, 6).toUpperCase()}`;
   db.prepare(`INSERT INTO products
-    (id, name, sku, category, description, hsn_code, unit, sale_price, buy_price, tax_rate, stock, min_stock)
-    VALUES (@id, @name, @sku, @category, @description, @hsn_code, @unit, @sale_price, @buy_price, @tax_rate, @stock, @min_stock)`).run(p);
+    (id, name, sku, category, description, hsn_code, unit, sale_price, buy_price, tax_rate, stock, min_stock, has_serial, warranty_months)
+    VALUES (@id, @name, @sku, @category, @description, @hsn_code, @unit, @sale_price, @buy_price, @tax_rate, @stock, @min_stock, @has_serial, @warranty_months)`).run(p);
   const fresh = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   audit.create(req, 'product', fresh, `Added product ${fresh.name} (${fresh.sku})`);
   res.status(201).json(fresh);
@@ -82,7 +90,9 @@ router.put('/:id', validate(productSchema), (req, res) => {
   db.prepare(`UPDATE products SET
     name=@name, sku=@sku, category=@category, description=@description, hsn_code=@hsn_code,
     unit=@unit, sale_price=@sale_price, buy_price=@buy_price, tax_rate=@tax_rate,
-    stock=@stock, min_stock=@min_stock, updated_at=datetime('now')
+    stock=@stock, min_stock=@min_stock,
+    has_serial=@has_serial, warranty_months=@warranty_months,
+    updated_at=datetime('now')
     WHERE id=@id`).run(p);
   const after = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);
   audit.update(req, 'product', before, after, `Updated product ${after.name}`);

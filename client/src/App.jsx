@@ -11,6 +11,7 @@ import Banking from './pages/Banking.jsx';
 import Parties from './pages/Parties.jsx';
 import PartyDetail from './pages/PartyDetail.jsx';
 import Products from './pages/Products.jsx';
+import Serials from './pages/Serials.jsx';
 import Expenses from './pages/Expenses.jsx';
 import POS from './pages/POS.jsx';
 import Reports from './pages/Reports.jsx';
@@ -78,6 +79,7 @@ export default function App() {
         <Route path="/parties" element={<Parties />} />
         <Route path="/parties/:id" element={<PartyDetail />} />
         <Route path="/products" element={<Products />} />
+        <Route path="/serials" element={<Serials />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/banking" element={<Banking />} />
         <Route path="/pos" element={<POS />} />

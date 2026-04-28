@@ -1252,6 +1252,100 @@ async function run() {
     assert(r.body.warnings.some(w => w.invoice_no === 'CN-002'), 'orphan CN should produce a warning');
   });
 
+  // --- SERIALS / WARRANTY (Products → has_serial, InvoiceForm serials, /api/serials) ---
+  let serialIds = {};
+  await step('Create a serial-tracked product (12-month warranty)', async () => {
+    const r = await req('POST', '/products', {
+      name: 'Smart TV 43"', sku: 'TV-43', sale_price: 30000, tax_rate: 18,
+      stock: 5, has_serial: 1, warranty_months: 12,
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    assert(r.body.has_serial === 1, `has_serial=${r.body.has_serial}`);
+    assert(r.body.warranty_months === 12, `warranty_months=${r.body.warranty_months}`);
+    serialIds.product = r.body.id;
+  });
+
+  await step('Reject sale of serial-tracked product without enough serials', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: `${gstrPeriod}-27`,
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      items: [{ product_id: serialIds.product, name: 'Smart TV 43"', qty: 2, rate: 30000, tax_rate: 18, unit: 'NOS', serials: ['TV-001'] }],
+    });
+    assert(r.status === 400, `expected 400 got ${r.status}`);
+  });
+
+  await step('Reject sale with duplicate serial in same invoice', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: `${gstrPeriod}-27`,
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      items: [{ product_id: serialIds.product, name: 'Smart TV 43"', qty: 2, rate: 30000, tax_rate: 18, unit: 'NOS', serials: ['DUP-1', 'DUP-1'] }],
+    });
+    assert(r.status === 400, `expected 400 got ${r.status}`);
+  });
+
+  await step('Sale of 2 TVs with serials persists item_serials with warranty_until', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2026-04-15',
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      items: [{ product_id: serialIds.product, name: 'Smart TV 43"', qty: 2, rate: 30000, tax_rate: 18, unit: 'NOS', serials: ['TV-001', 'TV-002'] }],
+    });
+    assert(r.status === 201, `status=${r.status} body=${JSON.stringify(r.body).slice(0, 200)}`);
+    serialIds.invoiceId = r.body.id;
+    const item = r.body.items?.[0];
+    assert(item?.serials?.length === 2, `serials on item=${item?.serials?.length}`);
+  });
+
+  await step('GET /serials lists both with status=active and warranty 2027-04-15', async () => {
+    const r = await req('GET', '/serials?q=TV-');
+    assert(r.status === 200, `status=${r.status}`);
+    const rows = r.body.rows || r.body || [];
+    assert(rows.length === 2, `expected 2 rows got ${rows.length}`);
+    const tv001 = rows.find((x) => x.serial === 'TV-001');
+    assert(tv001, 'TV-001 not found');
+    assert(tv001.status === 'active', `status=${tv001.status}`);
+    assert(tv001.warranty_until === '2027-04-15', `warranty_until=${tv001.warranty_until}`);
+    return `warranty till ${tv001.warranty_until}`;
+  });
+
+  await step('GET /serials/lookup/TV-001 returns invoice context', async () => {
+    const r = await req('GET', '/serials/lookup/TV-001');
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.invoice_id === serialIds.invoiceId, `invoice_id=${r.body.invoice_id}`);
+    assert(r.body.product_name === 'Smart TV 43"', `product_name=${r.body.product_name}`);
+  });
+
+  await step('GET /serials/lookup case-insensitive', async () => {
+    const r = await req('GET', '/serials/lookup/tv-001');
+    assert(r.status === 200, `status=${r.status}`);
+  });
+
+  await step('GET /serials/stats includes the 2 active warranties', async () => {
+    const r = await req('GET', '/serials/stats');
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.total >= 2, `total=${r.body.total}`);
+    assert(r.body.active >= 2, `active=${r.body.active}`);
+  });
+
+  await step('Editing the invoice (PUT) updates the serial set', async () => {
+    const r = await req('PUT', `/invoices/${serialIds.invoiceId}`, {
+      type: 'sale', date: '2026-04-15',
+      party_id: gstrInvoices.b2bIntraParty, status: 'sent',
+      items: [{ product_id: serialIds.product, name: 'Smart TV 43"', qty: 2, rate: 30000, tax_rate: 18, unit: 'NOS', serials: ['TV-001-NEW', 'TV-002-NEW'] }],
+    });
+    assert(r.status === 200, `status=${r.status}`);
+    const lookupOld = await req('GET', '/serials/lookup/TV-001');
+    assert(lookupOld.status === 404, `old serial should be gone, got ${lookupOld.status}`);
+    const lookupNew = await req('GET', '/serials/lookup/TV-001-NEW');
+    assert(lookupNew.status === 200, `new serial missing, got ${lookupNew.status}`);
+  });
+
+  await step('Deleting the invoice cascades — serials disappear from register', async () => {
+    const r = await req('DELETE', `/invoices/${serialIds.invoiceId}`);
+    assert(r.status === 204, `status=${r.status}`);
+    const r2 = await req('GET', '/serials/lookup/TV-001-NEW');
+    assert(r2.status === 404, `expected 404 after cascade, got ${r2.status}`);
+  });
+
   // --- SUMMARY ---
   console.log('');
   const failed = results.filter((r) => !r.ok);

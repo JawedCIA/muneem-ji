@@ -51,6 +51,7 @@ If you're a shop owner, a developer building for one, or just someone who believ
 ## Features
 
 ### Core
+- **Serial / IMEI tracking + warranty register** — toggle "Has serial numbers" on a product (electronics, mobile, jewellery, auto parts) and every unit sold is captured individually. Warranty period rolls forward from the invoice date. Search any serial across the lifetime of the shop, see which customer / invoice / date it ties back to, and at a glance know whether warranty is active, expiring within 30 days, expired, or unset.
 - **GST toggle** — registered businesses get full GST behaviour (CGST/SGST/IGST splits, GSTR-1/3B export, HSN columns); below-threshold shops can turn GST off in one click and the invoice / POS / reports adjust automatically (no GSTIN required, no tax columns, simple "Item / Qty / Rate / Total" bills)
 - **GST-compliant invoicing** — automatic CGST/SGST/IGST split based on party state vs. business state
 - **Quotations** with one-click "Convert to Invoice"
@@ -274,6 +275,13 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | GET    | `/api/reports/pl`                     | Profit & Loss                              |
 | GET    | `/api/reports/party-ledger/:id`       | Party ledger with running balance          |
 | GET    | `/api/reports/expense-summary`        | Expense breakdown                          |
+
+### Serials & Warranty
+| Method | Path                                  | Description                                          |
+| ------ | ------------------------------------- | ---------------------------------------------------- |
+| GET    | `/api/serials?q=&status=&product_id=` | Paginated serial register; status = active/expiring/expired/unknown |
+| GET    | `/api/serials/lookup/:serial`         | Find a single serial (case-insensitive) with invoice + party context |
+| GET    | `/api/serials/stats`                  | Counts by warranty status — drives the Serials page header |
 | GET    | `/api/reports/gstr1?period=YYYY-MM`   | GSTR-1 sections (B2B, B2CL, B2CS, CDNR, CDNUR, HSN, DOCS) + counts/totals/warnings |
 | GET    | `/api/reports/gstr1/csv?period=YYYY-MM&section=b2b\|b2cl\|b2cs\|cdnr\|cdnur\|hsn\|docs` | Tally-compatible CSV per section |
 | GET    | `/api/reports/gstr3b?period=YYYY-MM`  | GSTR-3B summary (3.1a, 3.1c, 3.2, 4 ITC, 6.1 payable) |
@@ -359,7 +367,7 @@ npm run db:status     # list applied + pending migrations
 npm run db:migrate    # apply pending migrations
 ```
 
-Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products`, `stock_movements`, `invoices` (incl. `share_token`, and `original_invoice_id/no/date` for credit notes), `invoice_items`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
+Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products` (incl. `has_serial`, `warranty_months`), `stock_movements`, `invoices` (incl. `share_token`, and `original_invoice_id/no/date` for credit notes), `invoice_items`, `item_serials`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
 
 To inspect the database directly:
 ```bash

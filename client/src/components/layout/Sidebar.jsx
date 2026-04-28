@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, FileText, FileSignature, Users, Package,
-  Wallet, ShoppingCart, BarChart3, Settings as SettingsIcon, ChevronsLeft, ChevronsRight, X, Repeat, Building2,
+  Wallet, ShoppingCart, BarChart3, Settings as SettingsIcon, ChevronsLeft, ChevronsRight, X, Repeat, Building2, ShieldCheck,
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/recurring', label: 'Recurring', icon: Repeat },
   { to: '/parties', label: 'Parties', icon: Users },
   { to: '/products', label: 'Products', icon: Package },
+  { to: '/serials', label: 'Serials', icon: ShieldCheck },
   { to: '/expenses', label: 'Expenses', icon: Wallet },
   { to: '/banking', label: 'Banking', icon: Building2 },
   { to: '/pos', label: 'POS', icon: ShoppingCart },

@@ -20,6 +20,7 @@ const itemSchema = z.object({
   unit: z.string().optional().default('Nos'),
   rate: z.coerce.number(),
   tax_rate: z.coerce.number().optional().default(18),
+  serials: z.array(z.string()).optional(),
 });
 
 const invoiceSchema = z.object({
@@ -67,6 +68,57 @@ function newShareToken() {
   return crypto.randomBytes(16).toString('hex');
 }
 
+// Compute warranty_until = sold_date + months. Stays null if either is missing.
+function addMonthsISO(dateISO, months) {
+  if (!dateISO || !months) return null;
+  const d = new Date(`${dateISO}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCMonth(d.getUTCMonth() + Number(months));
+  return d.toISOString().slice(0, 10);
+}
+
+// Validate the per-line serials for sale invoices: products with has_serial=1
+// require exactly qty distinct serials, and serials must be unique across the invoice.
+function validateSerials(items, type) {
+  if (type !== 'sale') return; // only sales emit serials
+  const seen = new Set();
+  for (const it of items) {
+    if (!it.product_id) continue;
+    const p = db.prepare('SELECT has_serial, name FROM products WHERE id = ?').get(it.product_id);
+    if (!p?.has_serial) continue;
+    const serials = (it.serials || []).map((s) => String(s).trim()).filter(Boolean);
+    if (serials.length !== Number(it.qty)) {
+      throw new HttpError(400, `${p.name}: expected ${it.qty} serial number(s), got ${serials.length}`);
+    }
+    for (const s of serials) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) throw new HttpError(400, `Duplicate serial in invoice: ${s}`);
+      seen.add(key);
+    }
+  }
+}
+
+function persistSerials(invoiceId, partyId, soldDate, items, lineIds) {
+  if (!items || !items.length) return;
+  // Wipe and re-insert (idempotent for PUT). Cascade on invoice delete handles the create case too.
+  db.prepare('DELETE FROM item_serials WHERE invoice_id = ?').run(invoiceId);
+  const ins = db.prepare(`INSERT INTO item_serials
+    (id, serial, product_id, invoice_id, invoice_item_id, party_id, sold_date, warranty_months, warranty_until)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+  items.forEach((it, idx) => {
+    if (!it.product_id || !it.serials?.length) return;
+    const p = db.prepare('SELECT has_serial, warranty_months FROM products WHERE id = ?').get(it.product_id);
+    if (!p?.has_serial) return;
+    const months = p.warranty_months ?? null;
+    const warrantyUntil = addMonthsISO(soldDate, months);
+    for (const raw of it.serials) {
+      const serial = String(raw).trim();
+      if (!serial) continue;
+      ins.run(nanoid(12), serial, it.product_id, invoiceId, lineIds[idx], partyId || null, soldDate, months, warrantyUntil);
+    }
+  });
+}
+
 function syncStock(invoiceId, items, type, status, direction) {
   // direction = -1 for deduct (sale), +1 for restore
   if (type !== 'sale') return;
@@ -98,6 +150,19 @@ function fullInvoice(id) {
   if (!inv) return null;
   const items = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY sort_order').all(id);
   const payments = db.prepare('SELECT * FROM payments WHERE invoice_id = ? ORDER BY date DESC').all(id);
+  // Attach serials per line item (electronics / mobile / appliance shops)
+  const serialRows = db.prepare(
+    'SELECT serial, invoice_item_id, warranty_until FROM item_serials WHERE invoice_id = ? ORDER BY serial'
+  ).all(id);
+  const byLine = new Map();
+  for (const s of serialRows) {
+    const arr = byLine.get(s.invoice_item_id) || [];
+    arr.push(s.serial);
+    byLine.set(s.invoice_item_id, arr);
+  }
+  for (const it of items) {
+    it.serials = byLine.get(it.id) || [];
+  }
   return { ...inv, items, payments };
 }
 
@@ -125,6 +190,7 @@ router.get('/:id', (req, res) => {
 router.post('/', validate(invoiceSchema), (req, res) => {
   const body = req.body;
   assertNotLocked(body.date, 'create entry');
+  validateSerials(body.items, body.type);
   const businessState = getBusinessStateCode();
   let interstate = !!body.interstate;
   if (body.party_id) {
@@ -160,14 +226,18 @@ router.post('/', validate(invoiceSchema), (req, res) => {
     db.prepare(`INSERT INTO invoices
       (id, no, type, date, due_date, party_id, party_name, interstate, subtotal, discount, cgst_total, sgst_total, igst_total, total, amount_paid, status, notes, share_token, original_invoice_id, original_invoice_no, original_invoice_date)
       VALUES (@id, @no, @type, @date, @due_date, @party_id, @party_name, @interstate, @subtotal, @discount, @cgst_total, @sgst_total, @igst_total, @total, @amount_paid, @status, @notes, @share_token, @original_invoice_id, @original_invoice_no, @original_invoice_date)`).run(inv);
+    const lineIds = [];
     calc.items.forEach((it, i) => {
+      const lineId = nanoid(12);
+      lineIds.push(lineId);
       db.prepare(`INSERT INTO invoice_items
         (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          nanoid(12), id, it.product_id || null, it.name, it.hsn_code || null,
+          lineId, id, it.product_id || null, it.name, it.hsn_code || null,
           it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i
         );
     });
+    persistSerials(id, inv.party_id, inv.date, body.items, lineIds);
     syncStock(id, calc.items, inv.type, inv.status, -1);
   })();
   const fresh = fullInvoice(id);
@@ -181,6 +251,7 @@ router.put('/:id', validate(invoiceSchema), (req, res) => {
   // Block edit if either the existing or the new date sits inside the locked period
   assertNotLocked([existing.date, req.body.date], 'edit invoice');
   const oldItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
+  validateSerials(req.body.items, req.body.type);
   const body = req.body;
   const businessState = getBusinessStateCode();
   let interstate = !!body.interstate;
@@ -221,14 +292,18 @@ router.put('/:id', validate(invoiceSchema), (req, res) => {
       original_invoice_id=@original_invoice_id, original_invoice_no=@original_invoice_no,
       original_invoice_date=@original_invoice_date,
       updated_at=datetime('now') WHERE id=@id`).run(inv);
+    const lineIds = [];
     calc.items.forEach((it, i) => {
+      const lineId = nanoid(12);
+      lineIds.push(lineId);
       db.prepare(`INSERT INTO invoice_items
         (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          nanoid(12), req.params.id, it.product_id || null, it.name, it.hsn_code || null,
+          lineId, req.params.id, it.product_id || null, it.name, it.hsn_code || null,
           it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i
         );
     });
+    persistSerials(req.params.id, inv.party_id, inv.date, body.items, lineIds);
     syncStock(req.params.id, calc.items, inv.type, inv.status, -1);
     // Recalculate paid + status
     const paid = db.prepare('SELECT COALESCE(SUM(amount), 0) p FROM payments WHERE invoice_id = ?').get(req.params.id).p;

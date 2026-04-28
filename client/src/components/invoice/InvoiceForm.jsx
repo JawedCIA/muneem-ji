@@ -14,7 +14,7 @@ const STATUS_OPTIONS = {
 };
 
 function emptyItem(defaultTaxRate = 18) {
-  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: defaultTaxRate };
+  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: defaultTaxRate, has_serial: false, warranty_months: null, serials: [] };
 }
 
 export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel }) {
@@ -75,7 +75,7 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
 
   function pickProduct(i, productId) {
     if (!productId) {
-      updateItem(i, { product_id: null });
+      updateItem(i, { product_id: null, has_serial: false, warranty_months: null, serials: [] });
       return;
     }
     const p = products.find((x) => x.id === productId);
@@ -87,6 +87,9 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
       unit: p.unit || 'Nos',
       rate: p.sale_price,
       tax_rate: p.tax_rate,
+      has_serial: !!p.has_serial && p.has_serial !== 0,
+      warranty_months: p.warranty_months ?? null,
+      serials: [],
     });
   }
 
@@ -95,6 +98,16 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
     if (!form.date) e.date = 'Date required';
     const validItems = form.items.filter((it) => it.name && Number(it.qty) > 0);
     if (validItems.length === 0) e.items = 'At least one valid line item required';
+    if (type === 'sale') {
+      for (const it of validItems) {
+        if (!it.has_serial) continue;
+        const serials = (it.serials || []).filter((s) => String(s).trim());
+        if (serials.length !== Number(it.qty)) {
+          e.items = `${it.name}: enter ${it.qty} serial number(s) (one per line)`;
+          break;
+        }
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -106,7 +119,13 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
       const payload = {
         ...form,
         status: status || form.status,
-        items: form.items.filter((it) => it.name && Number(it.qty) > 0),
+        items: form.items
+          .filter((it) => it.name && Number(it.qty) > 0)
+          .map((it) => {
+            const { has_serial, warranty_months, ...rest } = it;
+            const serials = (it.serials || []).map((s) => String(s).trim()).filter(Boolean);
+            return serials.length ? { ...rest, serials } : { ...rest, serials: [] };
+          }),
       };
       if (form.interstateOverride) payload.interstate = form.interstate;
       else delete payload.interstate;
@@ -184,8 +203,8 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
               </tr>
             </thead>
             <tbody>
-              {form.items.map((it, i) => (
-                <tr key={i} className="border-t border-slate-100">
+              {form.items.flatMap((it, i) => [(
+                <tr key={`row-${i}`} className="border-t border-slate-100">
                   <td className="px-2 py-2">
                     <select
                       className="input mb-1 text-xs"
@@ -193,7 +212,7 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
                       onChange={(e) => pickProduct(i, e.target.value)}
                     >
                       <option value="">— Pick product —</option>
-                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.has_serial ? ' · serial-tracked' : ''}</option>)}
                     </select>
                     <input
                       className="input"
@@ -234,7 +253,19 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
                     </button>
                   </td>
                 </tr>
-              ))}
+              ),
+              type === 'sale' && it.has_serial ? (
+                <SerialsRow
+                  key={`serials-${i}`}
+                  qty={Number(it.qty) || 0}
+                  warrantyMonths={it.warranty_months}
+                  invoiceDate={form.date}
+                  colSpan={gstEnabled ? 8 : 6}
+                  serials={it.serials || []}
+                  onChange={(serials) => updateItem(i, { serials })}
+                />
+              ) : null,
+              ])}
             </tbody>
           </table>
         </div>
@@ -290,5 +321,44 @@ function Row({ label, value }) {
       <span className="text-slate-500">{label}</span>
       <span className="font-semibold text-navy">{value}</span>
     </div>
+  );
+}
+
+function SerialsRow({ qty, warrantyMonths, invoiceDate, colSpan, serials, onChange }) {
+  const text = (serials || []).join('\n');
+  const filled = (serials || []).filter((s) => String(s).trim()).length;
+  const ok = filled === qty;
+  const warrantyTill = warrantyMonths && invoiceDate
+    ? (() => { const d = new Date(`${invoiceDate}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + Number(warrantyMonths)); return d.toISOString().slice(0, 10); })()
+    : null;
+  return (
+    <tr className="border-t-0 bg-amber-50/40">
+      <td colSpan={colSpan} className="px-3 py-3">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex-1 min-w-[260px]">
+            <label className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+              Serial / IMEI numbers · {filled}/{qty}
+            </label>
+            <textarea
+              rows={Math.min(Math.max(qty, 1), 6)}
+              className="input mt-1 font-mono text-xs"
+              placeholder={`Enter ${qty} serial number(s), one per line`}
+              value={text}
+              onChange={(e) => onChange(e.target.value.split('\n').map((s) => s.replace(/\r/g, '')))}
+            />
+            {!ok && (
+              <p className="text-[11px] text-rose-600 mt-1">Need exactly {qty} serial(s) — currently have {filled}.</p>
+            )}
+          </div>
+          <div className="text-xs text-amber-900 bg-amber/10 rounded-lg px-3 py-2 self-start">
+            {warrantyMonths ? (
+              <>Warranty: <span className="font-bold">{warrantyMonths} month(s)</span><br />Valid till: <span className="font-bold">{warrantyTill}</span></>
+            ) : (
+              <>No warranty configured for this product.</>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
