@@ -6,25 +6,27 @@ import PartyPicker from './PartyPicker.jsx';
 import { api } from '../../utils/api.js';
 import { calcInvoice, TAX_RATES, UNITS } from '../../utils/gst.js';
 import { formatINR, todayISO, addDays } from '../../utils/format.js';
-import { useSettings } from '../../store/settings.js';
+import { useSettings, useGstEnabled } from '../../store/settings.js';
 
 const STATUS_OPTIONS = {
   sale: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
   quotation: ['draft', 'sent', 'accepted', 'rejected', 'expired'],
 };
 
-function emptyItem() {
-  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: 18 };
+function emptyItem(defaultTaxRate = 18) {
+  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: defaultTaxRate };
 }
 
 export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel }) {
   const settings = useSettings((s) => s.settings);
+  const gstEnabled = useGstEnabled();
+  const defaultRate = gstEnabled ? 18 : 0;
   const [parties, setParties] = useState([]);
   const [products, setProducts] = useState([]);
 
   const [form, setForm] = useState(() => initial ? {
     ...initial,
-    items: initial.items?.length ? initial.items : [emptyItem()],
+    items: initial.items?.length ? initial.items : [emptyItem(defaultRate)],
   } : {
     type,
     no: '',
@@ -37,7 +39,7 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
     discount: 0,
     status: 'draft',
     notes: settings.defaultNotes || '',
-    items: [emptyItem()],
+    items: [emptyItem(defaultRate)],
   });
 
   const [saving, setSaving] = useState(false);
@@ -66,9 +68,9 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
       items: f.items.map((it, idx) => idx === i ? { ...it, ...patch } : it),
     }));
   }
-  function addLine() { setForm((f) => ({ ...f, items: [...f.items, emptyItem()] })); }
+  function addLine() { setForm((f) => ({ ...f, items: [...f.items, emptyItem(defaultRate)] })); }
   function removeLine(i) {
-    setForm((f) => ({ ...f, items: f.items.length === 1 ? [emptyItem()] : f.items.filter((_, idx) => idx !== i) }));
+    setForm((f) => ({ ...f, items: f.items.length === 1 ? [emptyItem(defaultRate)] : f.items.filter((_, idx) => idx !== i) }));
   }
 
   function pickProduct(i, productId) {
@@ -146,16 +148,18 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
         </Select>
       </div>
 
-      <label className="inline-flex items-center gap-2 text-sm text-slate-600">
-        <input
-          type="checkbox"
-          checked={form.interstate}
-          onChange={(e) => setForm({ ...form, interstate: e.target.checked, interstateOverride: true })}
-          className="rounded border-slate-300 text-amber focus:ring-amber/40"
-        />
-        Interstate transaction (IGST applies)
-        {!form.interstateOverride && <span className="text-xs text-slate-400">— auto-detected</span>}
-      </label>
+      {gstEnabled && (
+        <label className="inline-flex items-center gap-2 text-sm text-slate-600">
+          <input
+            type="checkbox"
+            checked={form.interstate}
+            onChange={(e) => setForm({ ...form, interstate: e.target.checked, interstateOverride: true })}
+            className="rounded border-slate-300 text-amber focus:ring-amber/40"
+          />
+          Interstate transaction (IGST applies)
+          {!form.interstateOverride && <span className="text-xs text-slate-400">— auto-detected</span>}
+        </label>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -170,11 +174,11 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
             <thead className="bg-slate-50 text-slate-500 text-xs">
               <tr>
                 <th className="text-left px-3 py-2 font-semibold">Item</th>
-                <th className="text-left px-2 py-2 font-semibold w-24">HSN</th>
+                {gstEnabled && <th className="text-left px-2 py-2 font-semibold w-24">HSN</th>}
                 <th className="text-right px-2 py-2 font-semibold w-20">Qty</th>
                 <th className="text-left px-2 py-2 font-semibold w-20">Unit</th>
                 <th className="text-right px-2 py-2 font-semibold w-28">Rate</th>
-                <th className="text-right px-2 py-2 font-semibold w-20">Tax%</th>
+                {gstEnabled && <th className="text-right px-2 py-2 font-semibold w-20">Tax%</th>}
                 <th className="text-right px-2 py-2 font-semibold w-32">Total</th>
                 <th className="w-10"></th>
               </tr>
@@ -198,9 +202,11 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
                       onChange={(e) => updateItem(i, { name: e.target.value })}
                     />
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <input className="input" value={it.hsn_code || ''} onChange={(e) => updateItem(i, { hsn_code: e.target.value })} />
-                  </td>
+                  {gstEnabled && (
+                    <td className="px-2 py-2 align-top">
+                      <input className="input" value={it.hsn_code || ''} onChange={(e) => updateItem(i, { hsn_code: e.target.value })} />
+                    </td>
+                  )}
                   <td className="px-2 py-2 align-top">
                     <input type="number" min="0" step="0.01" className="input text-right" value={it.qty} onChange={(e) => updateItem(i, { qty: parseFloat(e.target.value) || 0 })} />
                   </td>
@@ -212,11 +218,13 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
                   <td className="px-2 py-2 align-top">
                     <input type="number" min="0" step="0.01" className="input text-right" value={it.rate} onChange={(e) => updateItem(i, { rate: parseFloat(e.target.value) || 0 })} />
                   </td>
-                  <td className="px-2 py-2 align-top">
-                    <select className="input" value={it.tax_rate} onChange={(e) => updateItem(i, { tax_rate: parseFloat(e.target.value) })}>
-                      {TAX_RATES.map((t) => <option key={t} value={t}>{t}%</option>)}
-                    </select>
-                  </td>
+                  {gstEnabled && (
+                    <td className="px-2 py-2 align-top">
+                      <select className="input" value={it.tax_rate} onChange={(e) => updateItem(i, { tax_rate: parseFloat(e.target.value) })}>
+                        {TAX_RATES.map((t) => <option key={t} value={t}>{t}%</option>)}
+                      </select>
+                    </td>
+                  )}
                   <td className="px-2 py-2 align-top text-right font-semibold text-navy">
                     {formatINR(calc.items[i]?.total || 0)}
                   </td>
@@ -237,13 +245,13 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
         <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
           <div className="space-y-2 text-sm">
             <Row label="Subtotal" value={formatINR(calc.subtotal)} />
-            {form.interstate
+            {gstEnabled && (form.interstate
               ? <Row label="IGST" value={formatINR(calc.igst)} />
               : (<>
                 <Row label="CGST" value={formatINR(calc.cgst)} />
                 <Row label="SGST" value={formatINR(calc.sgst)} />
               </>)
-            }
+            )}
             <div className="flex items-center justify-between pt-1">
               <span className="text-slate-500">Discount</span>
               <input

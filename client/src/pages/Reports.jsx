@@ -7,12 +7,13 @@ import Table from '../components/ui/Table.jsx';
 import { api } from '../utils/api.js';
 import { formatINR, formatINRCompact, formatDate, downloadCSV } from '../utils/format.js';
 import { toast } from '../store/toast.js';
+import { useGstEnabled } from '../store/settings.js';
 
-const REPORTS = [
+const REPORTS_ALL = [
   { key: 'sales-register', label: 'Sales Register' },
-  { key: 'gst-summary', label: 'GST Summary' },
-  { key: 'gstr1', label: 'GSTR-1 Returns' },
-  { key: 'gstr3b', label: 'GSTR-3B Summary' },
+  { key: 'gst-summary', label: 'GST Summary', gstOnly: true },
+  { key: 'gstr1', label: 'GSTR-1 Returns', gstOnly: true },
+  { key: 'gstr3b', label: 'GSTR-3B Summary', gstOnly: true },
   { key: 'pl', label: 'Profit & Loss' },
   { key: 'party-ledger', label: 'Party Ledger' },
   { key: 'expense', label: 'Expense Report' },
@@ -29,7 +30,14 @@ const monthStart = () => { const d = new Date(); return `${d.getFullYear()}-${St
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function Reports() {
+  const gstEnabled = useGstEnabled();
+  const REPORTS = REPORTS_ALL.filter((r) => gstEnabled || !r.gstOnly);
   const [active, setActive] = useState('sales-register');
+
+  // If the user toggles GST off while sitting on a GST-only tab, fall back to a safe one
+  useEffect(() => {
+    if (!REPORTS.find((r) => r.key === active)) setActive('sales-register');
+  }, [gstEnabled, active]);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
   const [period, setPeriod] = useState(lastMonthPeriod());

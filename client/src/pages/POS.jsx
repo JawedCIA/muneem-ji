@@ -9,7 +9,7 @@ import WhatsAppShareDialog from '../components/invoice/WhatsAppShareDialog.jsx';
 import { api } from '../utils/api.js';
 import { calcInvoice, PAYMENT_MODES, TAX_RATES, UNITS } from '../utils/gst.js';
 import { formatINR, todayISO } from '../utils/format.js';
-import { useSettings } from '../store/settings.js';
+import { useSettings, useGstEnabled, gstIsEnabled } from '../store/settings.js';
 import { toast } from '../store/toast.js';
 
 let customCounter = 0;
@@ -53,6 +53,7 @@ function printReceipt() {
 
 export default function POS() {
   const settings = useSettings((s) => s.settings);
+  const gstOn = useGstEnabled();
   const [products, setProducts] = useState([]);
   const [parties, setParties] = useState([]);
   const [search, setSearch] = useState('');
@@ -239,12 +240,14 @@ export default function POS() {
                           <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Price ₹</div>
                           <input type="number" min="0" step="0.01" className="input py-1 text-sm" value={it.sale_price} onChange={(e) => setPrice(it.cart_id, parseFloat(e.target.value) || 0)} />
                         </div>
-                        <div className="flex-1">
-                          <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Tax %</div>
-                          <select className="input py-1 text-sm" value={it.tax_rate} onChange={(e) => setCart((c) => c.map((x) => x.cart_id === it.cart_id ? { ...x, tax_rate: parseFloat(e.target.value) } : x))}>
-                            {TAX_RATES.map((t) => <option key={t} value={t}>{t}%</option>)}
-                          </select>
-                        </div>
+                        {gstOn && (
+                          <div className="flex-1">
+                            <div className="text-[10px] uppercase tracking-wider text-slate-500 mb-0.5">Tax %</div>
+                            <select className="input py-1 text-sm" value={it.tax_rate} onChange={(e) => setCart((c) => c.map((x) => x.cart_id === it.cart_id ? { ...x, tax_rate: parseFloat(e.target.value) } : x))}>
+                              {TAX_RATES.map((t) => <option key={t} value={t}>{t}%</option>)}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -255,7 +258,9 @@ export default function POS() {
 
           <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 text-sm">
             <div className="flex items-center justify-between"><span className="text-slate-500">Subtotal</span><span className="font-semibold">{formatINR(calc.subtotal)}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-500">Tax</span><span className="font-semibold">{formatINR(calc.cgst + calc.sgst + calc.igst)}</span></div>
+            {gstOn && (
+              <div className="flex items-center justify-between"><span className="text-slate-500">Tax</span><span className="font-semibold">{formatINR(calc.cgst + calc.sgst + calc.igst)}</span></div>
+            )}
             <div className="flex items-center justify-between gap-2">
               <span className="text-slate-500">Discount</span>
               <input type="number" min="0" step="0.01" value={discount} onChange={(e) => setDiscount(parseFloat(e.target.value) || 0)} className="input w-28 py-1 text-right" />
@@ -388,7 +393,7 @@ function ReceiptThermal({ invoice, settings }) {
         {(settings.email || settings.website) && (
           <div className="text-[9px]">{[settings.email, settings.website].filter(Boolean).join(' · ')}</div>
         )}
-        {settings.gstin && <div className="text-[9px] mt-0.5"><span className="font-bold">GSTIN:</span> {settings.gstin}</div>}
+        {gstIsEnabled(settings) && settings.gstin && <div className="text-[9px] mt-0.5"><span className="font-bold">GSTIN:</span> {settings.gstin}</div>}
       </div>
       <div className="text-[10px] mb-2 space-y-0.5">
         <div className="flex justify-between"><span className="font-bold">Receipt #</span><span>{invoice.no}</span></div>
@@ -405,12 +410,12 @@ function ReceiptThermal({ invoice, settings }) {
       </div>
       <div className="space-y-0.5 text-[10px]">
         <div className="flex justify-between"><span>Subtotal</span><span>{formatINR(invoice.subtotal)}</span></div>
-        {invoice.interstate
+        {gstIsEnabled(settings) && (invoice.interstate
           ? <div className="flex justify-between"><span>IGST</span><span>{formatINR(invoice.igst_total)}</span></div>
           : (<>
             <div className="flex justify-between"><span>CGST</span><span>{formatINR(invoice.cgst_total)}</span></div>
             <div className="flex justify-between"><span>SGST</span><span>{formatINR(invoice.sgst_total)}</span></div>
-          </>)}
+          </>))}
         {invoice.discount > 0 && <div className="flex justify-between"><span>Discount</span><span>-{formatINR(invoice.discount)}</span></div>}
         <div className="flex justify-between font-bold border-t border-slate-300 pt-1 mt-1 text-sm"><span>TOTAL</span><span>{formatINR(invoice.total)}</span></div>
       </div>

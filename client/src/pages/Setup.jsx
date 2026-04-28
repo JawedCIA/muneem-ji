@@ -20,6 +20,7 @@ export default function Setup() {
   const [biz, setBiz] = useState({
     businessName: '', gstin: '', pan: '', phone: '', email: '',
     address: '', city: '', pincode: '', stateCode: '',
+    gstEnabled: true,
   });
   const [errors, setErrors] = useState({});
 
@@ -36,7 +37,7 @@ export default function Setup() {
   function validateBiz() {
     const e = {};
     if (!biz.businessName.trim()) e.businessName = 'Required';
-    if (biz.gstin && !isValidGSTIN(biz.gstin)) e.gstin = 'Invalid GSTIN format';
+    if (biz.gstEnabled && biz.gstin && !isValidGSTIN(biz.gstin)) e.gstin = 'Invalid GSTIN format';
     if (biz.pan && !isValidPAN(biz.pan)) e.pan = 'Invalid PAN format';
     if (biz.pincode && !isValidPincode(biz.pincode)) e.pincode = 'Invalid pincode';
     if (biz.email && !isValidEmail(biz.email)) e.email = 'Invalid email';
@@ -136,8 +137,29 @@ export default function Setup() {
               <h2 className="text-lg font-bold text-navy">Tell us about your business</h2>
               <p className="text-sm text-slate-500">This appears on your invoices. You can edit any of it later in Settings.</p>
               <Input label="Business Name *" value={biz.businessName} onChange={(e) => setBiz({ ...biz, businessName: e.target.value })} error={errors.businessName} autoFocus />
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={biz.gstEnabled}
+                    onChange={(e) => setBiz({ ...biz, gstEnabled: e.target.checked })}
+                    className="mt-0.5 rounded border-slate-300 text-amber focus:ring-amber/40"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-navy">My business is registered under GST</div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      Turn this off if your turnover is below the GST threshold (₹40L goods / ₹20L services).
+                      You can flip it later in Settings — invoices, POS and reports will adjust automatically.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Input label="GSTIN" value={biz.gstin} onChange={(e) => setBiz({ ...biz, gstin: e.target.value })} error={errors.gstin} className="font-mono" hint="Optional, but required for GST invoices" />
+                {biz.gstEnabled && (
+                  <Input label="GSTIN" value={biz.gstin} onChange={(e) => setBiz({ ...biz, gstin: e.target.value })} error={errors.gstin} className="font-mono" hint="Optional, but required for GST invoices" />
+                )}
                 <Input label="PAN" value={biz.pan} onChange={(e) => setBiz({ ...biz, pan: e.target.value })} error={errors.pan} className="font-mono" />
                 <Input label="Phone" value={biz.phone} onChange={(e) => setBiz({ ...biz, phone: e.target.value })} />
                 <Input label="Email" value={biz.email} onChange={(e) => setBiz({ ...biz, email: e.target.value })} error={errors.email} />

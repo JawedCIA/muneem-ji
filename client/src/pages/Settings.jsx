@@ -156,7 +156,7 @@ export default function Settings() {
 
   function validate() {
     const e = {};
-    if (form.gstin && !isValidGSTIN(form.gstin)) e.gstin = 'Invalid GSTIN format';
+    if (String(form.gstEnabled ?? '1') !== '0' && form.gstin && !isValidGSTIN(form.gstin)) e.gstin = 'Invalid GSTIN format';
     if (form.pan && !isValidPAN(form.pan)) e.pan = 'Invalid PAN format';
     if (form.pincode && !isValidPincode(form.pincode)) e.pincode = 'Invalid pincode';
     if (form.email && !isValidEmail(form.email)) e.email = 'Invalid email';
@@ -223,12 +223,33 @@ export default function Settings() {
 
               <h3 className="text-base font-bold text-navy pt-2">Business Profile</h3>
               <p className="text-xs text-slate-500 -mt-2">All these details appear on your printed invoices, PDFs, and POS receipts.</p>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={String(form.gstEnabled ?? '1') !== '0'}
+                    onChange={(e) => set('gstEnabled', e.target.checked ? '1' : '0')}
+                    className="mt-0.5 rounded border-slate-300 text-amber focus:ring-amber/40"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-navy">GST registered business</div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      Off = invoices, POS and reports skip GST entirely (use this if your turnover is below the GST threshold).
+                      On = full GST behaviour with CGST/SGST/IGST splits and GSTR-1 / 3B export.
+                    </div>
+                  </div>
+                </label>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Input label="Business Name" value={form.businessName || ''} onChange={(e) => set('businessName', e.target.value)} />
                 <Input label="Phone" value={form.phone || ''} onChange={(e) => set('phone', e.target.value)} />
                 <Input label="Email" value={form.email || ''} onChange={(e) => set('email', e.target.value)} error={errors.email} />
                 <Input label="Website" value={form.website || ''} onChange={(e) => set('website', e.target.value)} />
-                <Input label="GSTIN" value={form.gstin || ''} onChange={(e) => set('gstin', e.target.value)} error={errors.gstin} className="font-mono" />
+                {String(form.gstEnabled ?? '1') !== '0' && (
+                  <Input label="GSTIN" value={form.gstin || ''} onChange={(e) => set('gstin', e.target.value)} error={errors.gstin} className="font-mono" />
+                )}
                 <Input label="PAN Number" value={form.pan || ''} onChange={(e) => set('pan', e.target.value)} error={errors.pan} className="font-mono" />
                 <div className="md:col-span-2">
                   <Textarea label="Address" rows="2" value={form.address || ''} onChange={(e) => set('address', e.target.value)} />

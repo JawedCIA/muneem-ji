@@ -1,5 +1,6 @@
 import { pdf, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import { formatINR, formatDate } from './format.js';
+import { gstIsEnabled } from '../store/settings.js';
 import React from 'react';
 
 const styles = StyleSheet.create({
@@ -35,6 +36,7 @@ function joinNonEmpty(parts, sep = ' · ') {
 }
 
 function InvoiceDoc({ invoice, settings, logoSrc }) {
+  const gstOn = gstIsEnabled(settings);
   const fullAddress = [
     settings.address,
     settings.city,
@@ -47,7 +49,7 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
     settings.website,
   ]);
   const taxLine = joinNonEmpty([
-    settings.gstin && `GSTIN: ${settings.gstin}`,
+    gstOn && settings.gstin && `GSTIN: ${settings.gstin}`,
     settings.pan && `PAN: ${settings.pan}`,
   ]);
 
@@ -64,7 +66,7 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
           ),
         ),
         React.createElement(View, { style: { alignItems: 'flex-end' } },
-          React.createElement(Text, { style: styles.invTitle }, invoice.type === 'quotation' ? 'Quotation' : 'Tax Invoice'),
+          React.createElement(Text, { style: styles.invTitle }, invoice.type === 'quotation' ? 'Quotation' : (gstOn ? 'Tax Invoice' : 'Invoice')),
           React.createElement(Text, { style: styles.invNo }, invoice.no),
           React.createElement(Text, { style: { fontSize: 8, color: '#475569', marginTop: 6 } }, `Date: ${formatDate(invoice.date)}`),
           invoice.due_date && React.createElement(Text, { style: { fontSize: 8, color: '#475569', marginTop: 2 } }, `${invoice.type === 'quotation' ? 'Expires' : 'Due'}: ${formatDate(invoice.due_date)}`),
@@ -76,31 +78,47 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
           React.createElement(Text, { style: styles.label }, 'Bill To'),
           React.createElement(Text, { style: styles.value }, invoice.party_name || 'Walk-in customer'),
         ),
-        React.createElement(View, { style: { alignItems: 'flex-end' } },
+        gstOn && React.createElement(View, { style: { alignItems: 'flex-end' } },
           React.createElement(Text, { style: styles.pill }, invoice.interstate ? 'IGST (Interstate)' : 'CGST + SGST (Intrastate)'),
         ),
       ),
 
       React.createElement(View, { style: styles.table },
-        React.createElement(View, { style: styles.thead },
-          React.createElement(Text, { style: [styles.th, { width: '5%' }] }, '#'),
-          React.createElement(Text, { style: [styles.th, { width: '40%' }] }, 'Item'),
-          React.createElement(Text, { style: [styles.th, { width: '12%' }] }, 'HSN'),
-          React.createElement(Text, { style: [styles.th, { width: '10%', textAlign: 'right' }] }, 'Qty'),
-          React.createElement(Text, { style: [styles.th, { width: '13%', textAlign: 'right' }] }, 'Rate'),
-          React.createElement(Text, { style: [styles.th, { width: '8%', textAlign: 'right' }] }, 'Tax'),
-          React.createElement(Text, { style: [styles.th, { width: '12%', textAlign: 'right' }] }, 'Amount'),
-        ),
+        gstOn
+          ? React.createElement(View, { style: styles.thead },
+              React.createElement(Text, { style: [styles.th, { width: '5%' }] }, '#'),
+              React.createElement(Text, { style: [styles.th, { width: '40%' }] }, 'Item'),
+              React.createElement(Text, { style: [styles.th, { width: '12%' }] }, 'HSN'),
+              React.createElement(Text, { style: [styles.th, { width: '10%', textAlign: 'right' }] }, 'Qty'),
+              React.createElement(Text, { style: [styles.th, { width: '13%', textAlign: 'right' }] }, 'Rate'),
+              React.createElement(Text, { style: [styles.th, { width: '8%', textAlign: 'right' }] }, 'Tax'),
+              React.createElement(Text, { style: [styles.th, { width: '12%', textAlign: 'right' }] }, 'Amount'),
+            )
+          : React.createElement(View, { style: styles.thead },
+              React.createElement(Text, { style: [styles.th, { width: '5%' }] }, '#'),
+              React.createElement(Text, { style: [styles.th, { width: '55%' }] }, 'Item'),
+              React.createElement(Text, { style: [styles.th, { width: '12%', textAlign: 'right' }] }, 'Qty'),
+              React.createElement(Text, { style: [styles.th, { width: '14%', textAlign: 'right' }] }, 'Rate'),
+              React.createElement(Text, { style: [styles.th, { width: '14%', textAlign: 'right' }] }, 'Amount'),
+            ),
         ...(invoice.items || []).map((it, i) =>
-          React.createElement(View, { style: styles.trow, key: i },
-            React.createElement(Text, { style: [styles.td, { width: '5%' }] }, String(i + 1)),
-            React.createElement(Text, { style: [styles.td, { width: '40%', fontWeight: 'bold' }] }, it.name),
-            React.createElement(Text, { style: [styles.td, { width: '12%' }] }, it.hsn_code || '—'),
-            React.createElement(Text, { style: [styles.td, { width: '10%', textAlign: 'right' }] }, `${it.qty} ${it.unit}`),
-            React.createElement(Text, { style: [styles.td, { width: '13%', textAlign: 'right' }] }, formatINR(it.rate)),
-            React.createElement(Text, { style: [styles.td, { width: '8%', textAlign: 'right' }] }, `${it.tax_rate}%`),
-            React.createElement(Text, { style: [styles.td, { width: '12%', textAlign: 'right', fontWeight: 'bold' }] }, formatINR(it.total)),
-          )
+          gstOn
+            ? React.createElement(View, { style: styles.trow, key: i },
+                React.createElement(Text, { style: [styles.td, { width: '5%' }] }, String(i + 1)),
+                React.createElement(Text, { style: [styles.td, { width: '40%', fontWeight: 'bold' }] }, it.name),
+                React.createElement(Text, { style: [styles.td, { width: '12%' }] }, it.hsn_code || '—'),
+                React.createElement(Text, { style: [styles.td, { width: '10%', textAlign: 'right' }] }, `${it.qty} ${it.unit}`),
+                React.createElement(Text, { style: [styles.td, { width: '13%', textAlign: 'right' }] }, formatINR(it.rate)),
+                React.createElement(Text, { style: [styles.td, { width: '8%', textAlign: 'right' }] }, `${it.tax_rate}%`),
+                React.createElement(Text, { style: [styles.td, { width: '12%', textAlign: 'right', fontWeight: 'bold' }] }, formatINR(it.total)),
+              )
+            : React.createElement(View, { style: styles.trow, key: i },
+                React.createElement(Text, { style: [styles.td, { width: '5%' }] }, String(i + 1)),
+                React.createElement(Text, { style: [styles.td, { width: '55%', fontWeight: 'bold' }] }, it.name),
+                React.createElement(Text, { style: [styles.td, { width: '12%', textAlign: 'right' }] }, `${it.qty} ${it.unit}`),
+                React.createElement(Text, { style: [styles.td, { width: '14%', textAlign: 'right' }] }, formatINR(it.rate)),
+                React.createElement(Text, { style: [styles.td, { width: '14%', textAlign: 'right', fontWeight: 'bold' }] }, formatINR(it.total)),
+              )
         ),
       ),
 
@@ -109,7 +127,7 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
           React.createElement(Text, { style: { color: '#64748b' } }, 'Subtotal'),
           React.createElement(Text, { style: { fontWeight: 'bold' } }, formatINR(invoice.subtotal)),
         ),
-        invoice.interstate
+        gstOn && (invoice.interstate
           ? React.createElement(View, { style: styles.totalRow },
               React.createElement(Text, { style: { color: '#64748b' } }, 'IGST'),
               React.createElement(Text, { style: { fontWeight: 'bold' } }, formatINR(invoice.igst_total)),
@@ -123,7 +141,7 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
                 React.createElement(Text, { style: { color: '#64748b' } }, 'SGST'),
                 React.createElement(Text, { style: { fontWeight: 'bold' } }, formatINR(invoice.sgst_total)),
               ),
-            ),
+            )),
         invoice.discount > 0 && React.createElement(View, { style: styles.totalRow },
           React.createElement(Text, { style: { color: '#64748b' } }, 'Discount'),
           React.createElement(Text, { style: { fontWeight: 'bold' } }, `− ${formatINR(invoice.discount)}`),

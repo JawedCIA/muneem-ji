@@ -47,6 +47,7 @@ const setupSchema = z.object({
     pincode: z.string().optional().or(z.literal('')),
     stateCode: z.string().optional().or(z.literal('')),
     stateName: z.string().optional().or(z.literal('')),
+    gstEnabled: z.union([z.boolean(), z.string(), z.number()]).optional(),
   }).optional(),
 });
 
@@ -64,7 +65,12 @@ router.post('/setup', validate(setupSchema), (req, res) => {
       const upsert = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
       for (const [k, v] of Object.entries(business)) {
-        upsert.run(k, v == null ? null : String(v));
+        // Normalize the gstEnabled toggle to '1'/'0' so client and server agree on the shape
+        if (k === 'gstEnabled') {
+          upsert.run(k, v ? '1' : '0');
+        } else {
+          upsert.run(k, v == null ? null : String(v));
+        }
       }
       upsert.run('setupCompletedAt', new Date().toISOString());
     }

@@ -20,3 +20,16 @@ export const useSettings = create((set) => ({
     return data;
   },
 }));
+
+// Treat anything other than the literal '0' or false as enabled.
+// This keeps existing installs and missing-key setups GST-on by default.
+export function gstIsEnabled(settings) {
+  const v = settings?.gstEnabled;
+  if (v === undefined || v === null || v === '') return true;
+  return String(v) !== '0' && v !== false;
+}
+
+export function useGstEnabled() {
+  const settings = useSettings((s) => s.settings);
+  return gstIsEnabled(settings);
+}

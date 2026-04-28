@@ -1182,6 +1182,64 @@ async function run() {
     assert(delhi, '3.2 should include Delhi (07) for the B2CL invoice');
   });
 
+  // --- GST TOGGLE (gstEnabled setting) ---
+  await step('Default install has gstEnabled = "1"', async () => {
+    const r = await req('GET', '/settings');
+    assert(r.body.gstEnabled === '1', `gstEnabled=${r.body.gstEnabled}`);
+  });
+
+  await step('Toggle GST off via Settings PUT', async () => {
+    const r = await req('PUT', '/settings', { gstEnabled: '0' });
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.gstEnabled === '0', `gstEnabled=${r.body.gstEnabled}`);
+  });
+
+  await step('Public branding endpoint exposes gstEnabled', async () => {
+    // Create a known invoice to grab a fresh share token
+    const party = await req('POST', '/parties', {
+      name: 'Brand Test Party', type: 'customer', state_code: '27', state_name: 'Maharashtra',
+    });
+    const created = await req('POST', '/invoices', {
+      type: 'sale', date: `${gstrPeriod}-26`,
+      party_id: party.body.id, status: 'sent',
+      items: [{ name: 'Item', qty: 1, rate: 100, tax_rate: 0, unit: 'NOS' }],
+    });
+    assert(created.status === 201, `create=${created.status}`);
+    const token = created.body?.share_token;
+    assert(token, `share_token missing on freshly-created invoice`);
+    const tmp = cookie; cookie = '';
+    const pub = await req('GET', `/public/invoice/${token}`);
+    cookie = tmp;
+    assert(pub.status === 200, `pub status=${pub.status}`);
+    assert(pub.body.branding?.gstEnabled === '0', `branding.gstEnabled=${pub.body.branding?.gstEnabled}`);
+  });
+
+  await step('Invoice still creates cleanly with GST off and no GSTIN on party', async () => {
+    const party = await req('POST', '/parties', {
+      name: 'Non-GST Walk-in', type: 'customer', state_code: '27', state_name: 'Maharashtra',
+    });
+    assert(party.status === 201, `party=${party.status}`);
+    const inv = await req('POST', '/invoices', {
+      type: 'sale', date: `${gstrPeriod}-25`,
+      party_id: party.body.id, status: 'sent',
+      items: [{ name: 'Generic item', qty: 2, rate: 500, tax_rate: 0, unit: 'NOS' }],
+    });
+    assert(inv.status === 201, `inv=${inv.status}`);
+    assert(inv.body.cgst_total === 0 && inv.body.sgst_total === 0 && inv.body.igst_total === 0, 'tax must be zero');
+    assert(inv.body.total === 1000, `total expected 1000 got ${inv.body.total}`);
+  });
+
+  await step('GSTR-1 endpoint still responds (returns empty/zero) when GST off', async () => {
+    // Server doesn't enforce gstEnabled — admin can re-enable and re-export. Just verify the endpoint works.
+    const r = await req('GET', `/reports/gstr1?period=${gstrPeriod}`);
+    assert(r.status === 200, `status=${r.status}`);
+  });
+
+  await step('Re-enable GST via Settings PUT (cleanup)', async () => {
+    const r = await req('PUT', '/settings', { gstEnabled: '1' });
+    assert(r.body.gstEnabled === '1', `gstEnabled=${r.body.gstEnabled}`);
+  });
+
   await step('GSTR-1 warns on credit note missing original ref', async () => {
     // Create an "orphan" credit note
     const cn = await req('POST', '/invoices', {

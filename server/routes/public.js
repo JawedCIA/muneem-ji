@@ -27,6 +27,7 @@ const lookupLimiter = rateLimit({
 const PUBLIC_BRANDING_KEYS = new Set([
   'businessName', 'address', 'city', 'pincode', 'stateCode', 'stateName',
   'phone', 'email', 'website', 'gstin', 'pan', 'logoUrl', 'invoiceFooter',
+  'gstEnabled',
 ]);
 
 function getPublicBranding() {

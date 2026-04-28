@@ -51,6 +51,7 @@ If you're a shop owner, a developer building for one, or just someone who believ
 ## Features
 
 ### Core
+- **GST toggle** — registered businesses get full GST behaviour (CGST/SGST/IGST splits, GSTR-1/3B export, HSN columns); below-threshold shops can turn GST off in one click and the invoice / POS / reports adjust automatically (no GSTIN required, no tax columns, simple "Item / Qty / Rate / Total" bills)
 - **GST-compliant invoicing** — automatic CGST/SGST/IGST split based on party state vs. business state
 - **Quotations** with one-click "Convert to Invoice"
 - **Parties** — customers & suppliers with GSTIN, addresses across all 29 Indian states + UTs
