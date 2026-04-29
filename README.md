@@ -35,6 +35,7 @@ Built and maintained by **[mannatai.com](https://mannatai.com)**
 - 🛒 **Tablet-friendly POS** with thermal 80mm receipts and WhatsApp share
 - 📱 **Serial / IMEI tracking + warranty register** for electronics, mobile, jewellery, appliances
 - 💊 **Batch + expiry tracking** for pharmacy, food, cosmetics, paint, lubricants — unified expiry register across sales and purchases
+- 🎛️ **Shop-type setup + feature toggles** — pick your shop archetype during setup (general / pharmacy / electronics / restaurant / service / wholesale / jewellery / auto) and the sidebar adapts; flip any individual feature on or off later
 - 💬 **WhatsApp share** — link or native PDF attach via the Web Share API
 - 🔁 **Recurring invoices**, **bank reconciliation** (HDFC/ICICI/SBI CSV), **audit log**, **period lock**, **2FA**, **daily auto-backups**
 - 🌍 **GST toggle** — turn it off entirely if your turnover is below threshold

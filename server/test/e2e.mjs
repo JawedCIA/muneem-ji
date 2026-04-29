@@ -1460,6 +1460,27 @@ async function run() {
     assert(r.body.items[0].batch_no == null, `batch_no leaked: ${r.body.items[0].batch_no}`);
   });
 
+  // --- FEATURE FLAGS (Settings → Features, Setup wizard shop type) ---
+  await step('Settings include all feature.* keys with sane defaults', async () => {
+    const r = await req('GET', '/settings');
+    assert(r.status === 200, `status=${r.status}`);
+    const expected = ['feature.serials', 'feature.batches', 'feature.banking', 'feature.recurring', 'feature.pos', 'feature.quotations'];
+    for (const k of expected) {
+      assert(r.body[k] === '0' || r.body[k] === '1', `${k}=${r.body[k]}`);
+    }
+    // Fresh install defaults: pos + quotations + banking on; advanced features off
+    assert(r.body['feature.pos'] === '1', `pos should default on, got ${r.body['feature.pos']}`);
+    assert(r.body['feature.quotations'] === '1', `quotations should default on, got ${r.body['feature.quotations']}`);
+  });
+
+  await step('PUT /settings flips a feature toggle', async () => {
+    const r = await req('PUT', '/settings', { 'feature.recurring': '1' });
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body['feature.recurring'] === '1', `recurring=${r.body['feature.recurring']}`);
+    const r2 = await req('PUT', '/settings', { 'feature.recurring': '0' });
+    assert(r2.body['feature.recurring'] === '0', `recurring after off=${r2.body['feature.recurring']}`);
+  });
+
   // --- SUMMARY ---
   console.log('');
   const failed = results.filter((r) => !r.ok);

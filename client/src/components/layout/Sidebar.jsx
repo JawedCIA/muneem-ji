@@ -4,19 +4,21 @@ import {
   Wallet, ShoppingCart, BarChart3, Settings as SettingsIcon, ChevronsLeft, ChevronsRight, X, Repeat, Building2, ShieldCheck, CalendarClock,
 } from 'lucide-react';
 import clsx from 'clsx';
+import { useSettings, featureIsOn } from '../../store/settings.js';
 
+// `feature` keys gate this nav item behind a setting; absent means always visible.
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/invoices', label: 'Invoices', icon: FileText },
-  { to: '/quotations', label: 'Quotations', icon: FileSignature },
-  { to: '/recurring', label: 'Recurring', icon: Repeat },
+  { to: '/quotations', label: 'Quotations', icon: FileSignature, feature: 'feature.quotations' },
+  { to: '/recurring', label: 'Recurring', icon: Repeat, feature: 'feature.recurring' },
   { to: '/parties', label: 'Parties', icon: Users },
   { to: '/products', label: 'Products', icon: Package },
-  { to: '/serials', label: 'Serials', icon: ShieldCheck },
-  { to: '/batches', label: 'Batches', icon: CalendarClock },
+  { to: '/serials', label: 'Serials', icon: ShieldCheck, feature: 'feature.serials' },
+  { to: '/batches', label: 'Batches', icon: CalendarClock, feature: 'feature.batches' },
   { to: '/expenses', label: 'Expenses', icon: Wallet },
-  { to: '/banking', label: 'Banking', icon: Building2 },
-  { to: '/pos', label: 'POS', icon: ShoppingCart },
+  { to: '/banking', label: 'Banking', icon: Building2, feature: 'feature.banking' },
+  { to: '/pos', label: 'POS', icon: ShoppingCart, feature: 'feature.pos' },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
@@ -28,6 +30,8 @@ const NAV = [
  *                    Backdrop dismisses on tap. Collapsed state is ignored on mobile.
  */
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }) {
+  const settings = useSettings((s) => s.settings);
+  const navItems = NAV.filter((it) => !it.feature || featureIsOn(settings, it.feature));
   return (
     <>
       {/* Mobile backdrop — only visible when drawer is open on small screens */}
@@ -69,7 +73,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

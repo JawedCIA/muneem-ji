@@ -48,6 +48,12 @@ const setupSchema = z.object({
     stateCode: z.string().optional().or(z.literal('')),
     stateName: z.string().optional().or(z.literal('')),
     gstEnabled: z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.serials':    z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.batches':    z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.banking':    z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.recurring':  z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.pos':        z.union([z.boolean(), z.string(), z.number()]).optional(),
+    'feature.quotations': z.union([z.boolean(), z.string(), z.number()]).optional(),
   }).optional(),
 });
 
@@ -65,8 +71,8 @@ router.post('/setup', validate(setupSchema), (req, res) => {
       const upsert = db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
       for (const [k, v] of Object.entries(business)) {
-        // Normalize the gstEnabled toggle to '1'/'0' so client and server agree on the shape
-        if (k === 'gstEnabled') {
+        // gstEnabled and feature.* are toggles — normalize to '1'/'0'
+        if (k === 'gstEnabled' || k.startsWith('feature.')) {
           upsert.run(k, v ? '1' : '0');
         } else {
           upsert.run(k, v == null ? null : String(v));

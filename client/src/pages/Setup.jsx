@@ -9,6 +9,44 @@ import { isValidGSTIN, isValidPAN, isValidPincode, isValidEmail } from '../utils
 
 const STEPS = ['Welcome', 'Admin Account', 'Business Profile', 'Done'];
 
+// Shop archetypes — picking one flips the feature.* defaults below in one go.
+// Users can tweak individual toggles later in Settings.
+const SHOP_TYPES = [
+  { key: 'general',     emoji: '🏬', label: 'General store',  hint: 'Kirana, supermarket, daily-needs' },
+  { key: 'pharmacy',    emoji: '💊', label: 'Pharmacy / medical', hint: 'Batch + expiry tracking on' },
+  { key: 'electronics', emoji: '📱', label: 'Electronics / appliances', hint: 'Serial / IMEI + warranty on' },
+  { key: 'restaurant',  emoji: '🍽️', label: 'Restaurant / food',  hint: 'POS only; no quotations' },
+  { key: 'service',     emoji: '🛠️', label: 'Service business', hint: 'Recurring + quotations; no POS' },
+  { key: 'wholesale',   emoji: '📦', label: 'Wholesale / B2B',  hint: 'Quotations + recurring; no POS' },
+  { key: 'jewellery',   emoji: '💍', label: 'Jewellery',        hint: 'Per-piece serials' },
+  { key: 'auto',        emoji: '🔧', label: 'Auto / repair',    hint: 'Serials + recurring (AMC)' },
+  { key: 'other',       emoji: '✨', label: 'Other / mixed',    hint: 'All features visible — turn off in Settings' },
+];
+
+function applyShopType(key) {
+  // Defaults common to every preset; specific shops override below.
+  const base = {
+    'feature.serials':    false,
+    'feature.batches':    false,
+    'feature.banking':    true,
+    'feature.recurring':  false,
+    'feature.pos':        true,
+    'feature.quotations': true,
+  };
+  switch (key) {
+    case 'pharmacy':    return { ...base, 'feature.batches': true };
+    case 'electronics': return { ...base, 'feature.serials': true };
+    case 'restaurant':  return { ...base, 'feature.quotations': false };
+    case 'service':     return { ...base, 'feature.pos': false, 'feature.recurring': true };
+    case 'wholesale':   return { ...base, 'feature.pos': false, 'feature.recurring': true };
+    case 'jewellery':   return { ...base, 'feature.serials': true };
+    case 'auto':        return { ...base, 'feature.serials': true, 'feature.recurring': true };
+    case 'other':       return { 'feature.serials': true, 'feature.batches': true, 'feature.banking': true,
+                                  'feature.recurring': true, 'feature.pos': true, 'feature.quotations': true };
+    default:            return base;
+  }
+}
+
 export default function Setup() {
   const setup = useAuth((s) => s.setup);
   const navigate = useNavigate();
@@ -21,6 +59,13 @@ export default function Setup() {
     businessName: '', gstin: '', pan: '', phone: '', email: '',
     address: '', city: '', pincode: '', stateCode: '',
     gstEnabled: true,
+    shopType: 'general',
+    'feature.serials': false,
+    'feature.batches': false,
+    'feature.banking': true,
+    'feature.recurring': false,
+    'feature.pos': true,
+    'feature.quotations': true,
   });
   const [errors, setErrors] = useState({});
 
@@ -51,12 +96,13 @@ export default function Setup() {
     setServerError(null);
     try {
       const stateName = STATES.find((s) => s[0] === biz.stateCode)?.[1] || '';
+      const { shopType, ...bizPayload } = biz;
       await setup({
         email: admin.email.trim().toLowerCase(),
         password: admin.password,
         name: admin.name.trim(),
         business: {
-          ...biz,
+          ...bizPayload,
           gstin: (biz.gstin || '').toUpperCase(),
           pan: (biz.pan || '').toUpperCase(),
           stateName,
@@ -137,6 +183,29 @@ export default function Setup() {
               <h2 className="text-lg font-bold text-navy">Tell us about your business</h2>
               <p className="text-sm text-slate-500">This appears on your invoices. You can edit any of it later in Settings.</p>
               <Input label="Business Name *" value={biz.businessName} onChange={(e) => setBiz({ ...biz, businessName: e.target.value })} error={errors.businessName} autoFocus />
+
+              <div className="space-y-2">
+                <div className="text-sm font-semibold text-navy">What kind of shop is this?</div>
+                <p className="text-xs text-slate-500">Picks sensible defaults — you can flip individual features later in Settings.</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {SHOP_TYPES.map((s) => (
+                    <button
+                      key={s.key}
+                      type="button"
+                      onClick={() => setBiz({ ...biz, shopType: s.key, ...applyShopType(s.key) })}
+                      className={`text-left px-3 py-2 rounded-lg border-2 transition ${
+                        biz.shopType === s.key
+                          ? 'border-amber bg-amber/5'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xl">{s.emoji}</div>
+                      <div className="text-sm font-bold text-navy mt-0.5">{s.label}</div>
+                      <div className="text-[11px] text-slate-500 leading-tight mt-0.5">{s.hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <label className="flex items-start gap-3 cursor-pointer">

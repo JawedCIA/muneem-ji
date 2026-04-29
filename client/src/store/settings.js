@@ -33,3 +33,25 @@ export function useGstEnabled() {
   const settings = useSettings((s) => s.settings);
   return gstIsEnabled(settings);
 }
+
+// Default ON when the setting is missing — keeps every legacy install at
+// "all features visible" until the user opts a feature out.
+const FEATURE_DEFAULTS = {
+  'feature.serials': true,
+  'feature.batches': true,
+  'feature.banking': true,
+  'feature.recurring': true,
+  'feature.pos': true,
+  'feature.quotations': true,
+};
+
+export function featureIsOn(settings, name) {
+  const v = settings?.[name];
+  if (v === undefined || v === null || v === '') return FEATURE_DEFAULTS[name] ?? true;
+  return String(v) !== '0' && v !== false;
+}
+
+export function useFeature(name) {
+  const settings = useSettings((s) => s.settings);
+  return featureIsOn(settings, name);
+}

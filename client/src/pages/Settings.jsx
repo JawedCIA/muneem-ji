@@ -261,6 +261,47 @@ export default function Settings() {
                   {STATES.map(([code, name]) => <option key={code} value={code}>{code} · {name}</option>)}
                 </Select>
               </div>
+
+              <h3 className="text-base font-bold text-navy pt-4">Features</h3>
+              <p className="text-xs text-slate-500 -mt-2">Show or hide modules based on what your shop actually uses. Hidden modules disappear from the sidebar but their data is preserved.</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <FeatureToggle
+                  name="feature.quotations"
+                  label="Quotations"
+                  hint="Pre-sale quotes with one-click conversion to invoice. Useful for B2B / project-based shops."
+                  form={form} set={set}
+                />
+                <FeatureToggle
+                  name="feature.recurring"
+                  label="Recurring invoices"
+                  hint="Auto-generate invoices on a weekly / monthly / quarterly cycle. AMC, subscription billing, rentals."
+                  form={form} set={set}
+                />
+                <FeatureToggle
+                  name="feature.pos"
+                  label="POS (counter / tablet)"
+                  hint="Tablet-friendly point of sale with thermal receipts. Default for retail; off for service-only shops."
+                  form={form} set={set}
+                />
+                <FeatureToggle
+                  name="feature.banking"
+                  label="Banking & reconciliation"
+                  hint="Import bank statements (HDFC / ICICI / SBI / Axis) and auto-match payments to invoices."
+                  form={form} set={set}
+                />
+                <FeatureToggle
+                  name="feature.serials"
+                  label="Serial / IMEI tracking"
+                  hint="For electronics, mobile, jewellery, appliances. Captures one serial per unit and tracks warranty."
+                  form={form} set={set}
+                />
+                <FeatureToggle
+                  name="feature.batches"
+                  label="Batch + expiry tracking"
+                  hint="For pharmacy, food, cosmetics, paint, lubricants. Captures batch and expiry on each invoice line."
+                  form={form} set={set}
+                />
+              </div>
             </div>
           )}
 
@@ -642,6 +683,25 @@ function TwoFactorCard() {
         </div>
       )}
     </div>
+  );
+}
+
+function FeatureToggle({ name, label, hint, form, set }) {
+  // Defaults match featureIsOn(): missing/empty → on. Avoid unchecking by accident.
+  const checked = !(form?.[name] === '0' || form?.[name] === 0 || form?.[name] === false);
+  return (
+    <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-amber/40 transition">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => set(name, e.target.checked ? '1' : '0')}
+        className="mt-0.5 rounded border-slate-300 text-amber focus:ring-amber/40"
+      />
+      <div className="flex-1">
+        <div className="text-sm font-semibold text-navy">{label}</div>
+        <div className="text-xs text-slate-500 mt-0.5">{hint}</div>
+      </div>
+    </label>
   );
 }
 
