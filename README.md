@@ -5,9 +5,8 @@
 # Muneem Ji
 ### *Aapka Digital Muneem* — Your Digital Accountant
 
-**Self-hosted GST billing & business management for Indian small businesses.**
-
-No SaaS subscriptions. No vendor lock-in. Runs 100% on your own machine or private server.
+**Self-hosted GST billing for Indian shops.**
+**No subscription. No vendor lock-in. Your data stays on your laptop.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)
@@ -18,7 +17,34 @@ No SaaS subscriptions. No vendor lock-in. Runs 100% on your own machine or priva
 
 Built and maintained by **[mannatai.com](https://mannatai.com)**
 
+<br />
+
+<!-- Hero shot: Dashboard. Replace this comment with the screenshot once captured per docs/screenshots/README.md -->
+<!-- <img src="docs/screenshots/01-dashboard.png" alt="Muneem Ji Dashboard" width="900" /> -->
+
 </div>
+
+> **Built for** kirana stores · electronics & appliance shops · mobile shops · pharmacies · jewellers · service businesses · wholesalers · stationery shops — and any Indian SMB that wants their books on their own disk.
+
+---
+
+## What you get
+
+- 🧾 **Full GST invoicing** — automatic CGST/SGST/IGST split, tax invoice / bill of supply, quotations with one-click conversion
+- 📊 **GSTR-1 + GSTR-3B export** — Tally-compatible CSVs (B2B / B2CL / B2CS / CDNR / HSN / DOCS) + 3B summary
+- 🛒 **Tablet-friendly POS** with thermal 80mm receipts and WhatsApp share
+- 📱 **Serial / IMEI tracking + warranty register** for electronics, mobile, jewellery, appliances
+- 💬 **WhatsApp share** — link or native PDF attach via the Web Share API
+- 🔁 **Recurring invoices**, **bank reconciliation** (HDFC/ICICI/SBI CSV), **audit log**, **period lock**, **2FA**, **daily auto-backups**
+- 🌍 **GST toggle** — turn it off entirely if your turnover is below threshold
+- 🐳 **Single Docker container** — runs on a ₹3000 mini-PC, on your laptop, on whatever hardware you already have
+
+> **Try it in 30 seconds**
+> ```bash
+> git clone https://github.com/JawedCIA/muneem-ji.git
+> cd muneem-ji && docker compose up -d
+> # open http://localhost:3001
+> ```
 
 ---
 
@@ -88,9 +114,15 @@ If you're a shop owner, a developer building for one, or just someone who believ
 
 ## Screenshots
 
-> _Add screenshots to a `docs/screenshots/` folder and reference them here._
->
-> Suggested shots: Dashboard, Invoice list, Invoice detail/print preview, POS, Reports, Mobile view.
+Capture guide is at [`docs/screenshots/README.md`](docs/screenshots/README.md) — exact shot list, what to seed, what filenames to use.
+
+| Screen | Image |
+| --- | --- |
+| Dashboard       | `docs/screenshots/01-dashboard.png` |
+| POS             | `docs/screenshots/02-pos.png` |
+| Invoice (PDF)   | `docs/screenshots/03-invoice-pdf.png` |
+| GSTR-1 returns  | `docs/screenshots/04-gstr1.png` |
+| Serial register | `docs/screenshots/05-serials.png` |
 
 ## Tech Stack
 
