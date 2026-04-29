@@ -9,8 +9,8 @@ Pick a topic. The main project [README](../README.md) is the high-level overview
 - **[SHOP-TYPES.md](SHOP-TYPES.md)** — what each shop archetype enables, how feature toggles work
 
 ## For contributors
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup, conventions, migration discipline
-- **[SECURITY.md](SECURITY.md)** — how to report vulnerabilities; hardening tips
+- **[../CONTRIBUTING.md](../CONTRIBUTING.md)** — dev setup, conventions, migration discipline
+- **[../SECURITY.md](../SECURITY.md)** — how to report vulnerabilities; hardening tips
 
 ## For launch / marketing
 - **[launch/checklist.md](launch/checklist.md)** — pre-launch tickbox

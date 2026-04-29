@@ -122,4 +122,4 @@ Yes, Pi 4 (4GB+) is fine. Pi 3 will work but feel sluggish on the dashboard.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [../CONTRIBUTING.md](../CONTRIBUTING.md).
