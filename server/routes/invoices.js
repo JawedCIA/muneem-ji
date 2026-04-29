@@ -21,6 +21,9 @@ const itemSchema = z.object({
   rate: z.coerce.number(),
   tax_rate: z.coerce.number().optional().default(18),
   serials: z.array(z.string()).optional(),
+  batch_no: z.string().optional().nullable(),
+  mfg_date: z.string().optional().nullable(),
+  exp_date: z.string().optional().nullable(),
 });
 
 const invoiceSchema = z.object({
@@ -94,6 +97,28 @@ function validateSerials(items, type) {
       const key = s.toLowerCase();
       if (seen.has(key)) throw new HttpError(400, `Duplicate serial in invoice: ${s}`);
       seen.add(key);
+    }
+  }
+}
+
+// Validate batch fields when product.has_batch=1: batch_no required, exp_date required.
+// Applied to both sales and purchases — pharmacy needs batch on incoming stock too.
+function validateBatches(items) {
+  for (const it of items) {
+    if (!it.product_id) continue;
+    const p = db.prepare('SELECT has_batch, name FROM products WHERE id = ?').get(it.product_id);
+    if (!p?.has_batch) continue;
+    if (!it.batch_no || !String(it.batch_no).trim()) {
+      throw new HttpError(400, `${p.name}: batch number required`);
+    }
+    if (!it.exp_date || !/^\d{4}-\d{2}-\d{2}$/.test(it.exp_date)) {
+      throw new HttpError(400, `${p.name}: expiry date required (YYYY-MM-DD)`);
+    }
+    if (it.mfg_date && !/^\d{4}-\d{2}-\d{2}$/.test(it.mfg_date)) {
+      throw new HttpError(400, `${p.name}: invalid manufacturing date`);
+    }
+    if (it.mfg_date && it.exp_date < it.mfg_date) {
+      throw new HttpError(400, `${p.name}: expiry date is before manufacturing date`);
     }
   }
 }
@@ -191,6 +216,7 @@ router.post('/', validate(invoiceSchema), (req, res) => {
   const body = req.body;
   assertNotLocked(body.date, 'create entry');
   validateSerials(body.items, body.type);
+  validateBatches(body.items);
   const businessState = getBusinessStateCode();
   let interstate = !!body.interstate;
   if (body.party_id) {
@@ -231,10 +257,11 @@ router.post('/', validate(invoiceSchema), (req, res) => {
       const lineId = nanoid(12);
       lineIds.push(lineId);
       db.prepare(`INSERT INTO invoice_items
-        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order, batch_no, mfg_date, exp_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           lineId, id, it.product_id || null, it.name, it.hsn_code || null,
-          it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i
+          it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i,
+          it.batch_no || null, it.mfg_date || null, it.exp_date || null
         );
     });
     persistSerials(id, inv.party_id, inv.date, body.items, lineIds);
@@ -252,6 +279,7 @@ router.put('/:id', validate(invoiceSchema), (req, res) => {
   assertNotLocked([existing.date, req.body.date], 'edit invoice');
   const oldItems = db.prepare('SELECT * FROM invoice_items WHERE invoice_id = ?').all(req.params.id);
   validateSerials(req.body.items, req.body.type);
+  validateBatches(req.body.items);
   const body = req.body;
   const businessState = getBusinessStateCode();
   let interstate = !!body.interstate;
@@ -297,10 +325,11 @@ router.put('/:id', validate(invoiceSchema), (req, res) => {
       const lineId = nanoid(12);
       lineIds.push(lineId);
       db.prepare(`INSERT INTO invoice_items
-        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order, batch_no, mfg_date, exp_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
           lineId, req.params.id, it.product_id || null, it.name, it.hsn_code || null,
-          it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i
+          it.qty, it.unit || 'Nos', it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i,
+          it.batch_no || null, it.mfg_date || null, it.exp_date || null
         );
     });
     persistSerials(req.params.id, inv.party_id, inv.date, body.items, lineIds);
@@ -364,9 +393,10 @@ router.post('/:id/convert', (req, res) => {
       FROM invoices WHERE id = ?`).run(newId, newNo, newShareToken(), req.params.id);
     quotation.items.forEach((it, i) => {
       db.prepare(`INSERT INTO invoice_items
-        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
-          nanoid(12), newId, it.product_id, it.name, it.hsn_code, it.qty, it.unit, it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i
+        (id, invoice_id, product_id, name, hsn_code, qty, unit, rate, tax_rate, taxable_amt, tax_amt, total, sort_order, batch_no, mfg_date, exp_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+          nanoid(12), newId, it.product_id, it.name, it.hsn_code, it.qty, it.unit, it.rate, it.tax_rate, it.taxable_amt, it.tax_amt, it.total, i,
+          it.batch_no || null, it.mfg_date || null, it.exp_date || null
         );
     });
     db.prepare('UPDATE invoices SET status = ? WHERE id = ?').run('accepted', req.params.id);

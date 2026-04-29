@@ -103,12 +103,20 @@ export default function POS() {
         has_serial: !!p.has_serial && p.has_serial !== 0,
         warranty_months: p.warranty_months ?? null,
         serials: [],
+        has_batch: !!p.has_batch && p.has_batch !== 0,
+        shelf_life_days: p.shelf_life_days ?? null,
+        batch_no: '',
+        mfg_date: '',
+        exp_date: '',
       }];
     });
   }
 
   function setSerials(cart_id, serials) {
     setCart((c) => c.map((x) => x.cart_id === cart_id ? { ...x, serials } : x));
+  }
+  function setBatch(cart_id, patch) {
+    setCart((c) => c.map((x) => x.cart_id === cart_id ? { ...x, ...patch } : x));
   }
 
   function addCustomItem({ name, price, qty, tax_rate, unit }) {
@@ -155,6 +163,9 @@ export default function POS() {
           rate: c.sale_price,
           tax_rate: c.tax_rate,
           serials: c.has_serial ? (c.serials || []).map((s) => String(s).trim()).filter(Boolean) : [],
+          batch_no: c.has_batch ? (String(c.batch_no || '').trim() || null) : null,
+          mfg_date: c.has_batch ? (c.mfg_date || null) : null,
+          exp_date: c.has_batch ? (c.exp_date || null) : null,
         })),
       };
       const inv = await api.post('/invoices', payload);
@@ -270,6 +281,46 @@ export default function POS() {
                           value={(it.serials || []).join('\n')}
                           onChange={(e) => setSerials(it.cart_id, e.target.value.split('\n').map((s) => s.replace(/\r/g, '')))}
                         />
+                      </div>
+                    )}
+                    {it.has_batch && (
+                      <div className="pl-1 grid grid-cols-3 gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-bold mb-0.5">Batch</div>
+                          <input
+                            className="input py-1 text-xs font-mono bg-emerald-50/50"
+                            placeholder="Batch no"
+                            value={it.batch_no || ''}
+                            onChange={(e) => setBatch(it.cart_id, { batch_no: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-bold mb-0.5">Mfg</div>
+                          <input
+                            type="date"
+                            className="input py-1 text-xs"
+                            value={it.mfg_date || ''}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              const patch = { mfg_date: v };
+                              if (v && it.shelf_life_days && !it.exp_date) {
+                                const d = new Date(`${v}T00:00:00Z`);
+                                d.setUTCDate(d.getUTCDate() + Number(it.shelf_life_days));
+                                patch.exp_date = d.toISOString().slice(0, 10);
+                              }
+                              setBatch(it.cart_id, patch);
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-emerald-800 font-bold mb-0.5">Expiry</div>
+                          <input
+                            type="date"
+                            className="input py-1 text-xs"
+                            value={it.exp_date || ''}
+                            onChange={(e) => setBatch(it.cart_id, { exp_date: e.target.value })}
+                          />
+                        </div>
                       </div>
                     )}
                   </div>

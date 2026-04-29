@@ -23,6 +23,8 @@ const productSchema = z.object({
   min_stock: z.coerce.number().optional().default(0),
   has_serial: z.union([z.boolean(), z.number(), z.string()]).optional().default(0),
   warranty_months: z.coerce.number().int().min(0).max(600).nullable().optional(),
+  has_batch: z.union([z.boolean(), z.number(), z.string()]).optional().default(0),
+  shelf_life_days: z.coerce.number().int().min(0).max(36500).nullable().optional(),
 });
 
 const stockAdjustSchema = z.object({
@@ -48,6 +50,12 @@ function normalizeProduct(body) {
     out.warranty_months = null;
   } else {
     out.warranty_months = Number(out.warranty_months);
+  }
+  out.has_batch = (out.has_batch === true || out.has_batch === 1 || out.has_batch === '1') ? 1 : 0;
+  if (out.shelf_life_days === undefined || out.shelf_life_days === '' || out.shelf_life_days === null) {
+    out.shelf_life_days = null;
+  } else {
+    out.shelf_life_days = Number(out.shelf_life_days);
   }
   return out;
 }
@@ -75,8 +83,8 @@ router.post('/', validate(productSchema), (req, res) => {
   const p = normalizeProduct({ id, ...req.body });
   if (!p.sku) p.sku = `SKU-${id.slice(0, 6).toUpperCase()}`;
   db.prepare(`INSERT INTO products
-    (id, name, sku, category, description, hsn_code, unit, sale_price, buy_price, tax_rate, stock, min_stock, has_serial, warranty_months)
-    VALUES (@id, @name, @sku, @category, @description, @hsn_code, @unit, @sale_price, @buy_price, @tax_rate, @stock, @min_stock, @has_serial, @warranty_months)`).run(p);
+    (id, name, sku, category, description, hsn_code, unit, sale_price, buy_price, tax_rate, stock, min_stock, has_serial, warranty_months, has_batch, shelf_life_days)
+    VALUES (@id, @name, @sku, @category, @description, @hsn_code, @unit, @sale_price, @buy_price, @tax_rate, @stock, @min_stock, @has_serial, @warranty_months, @has_batch, @shelf_life_days)`).run(p);
   const fresh = db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   audit.create(req, 'product', fresh, `Added product ${fresh.name} (${fresh.sku})`);
   res.status(201).json(fresh);
@@ -92,6 +100,7 @@ router.put('/:id', validate(productSchema), (req, res) => {
     unit=@unit, sale_price=@sale_price, buy_price=@buy_price, tax_rate=@tax_rate,
     stock=@stock, min_stock=@min_stock,
     has_serial=@has_serial, warranty_months=@warranty_months,
+    has_batch=@has_batch, shelf_life_days=@shelf_life_days,
     updated_at=datetime('now')
     WHERE id=@id`).run(p);
   const after = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id);

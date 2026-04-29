@@ -34,6 +34,7 @@ Built and maintained by **[mannatai.com](https://mannatai.com)**
 - 📊 **GSTR-1 + GSTR-3B export** — Tally-compatible CSVs (B2B / B2CL / B2CS / CDNR / HSN / DOCS) + 3B summary
 - 🛒 **Tablet-friendly POS** with thermal 80mm receipts and WhatsApp share
 - 📱 **Serial / IMEI tracking + warranty register** for electronics, mobile, jewellery, appliances
+- 💊 **Batch + expiry tracking** for pharmacy, food, cosmetics, paint, lubricants — unified expiry register across sales and purchases
 - 💬 **WhatsApp share** — link or native PDF attach via the Web Share API
 - 🔁 **Recurring invoices**, **bank reconciliation** (HDFC/ICICI/SBI CSV), **audit log**, **period lock**, **2FA**, **daily auto-backups**
 - 🌍 **GST toggle** — turn it off entirely if your turnover is below threshold
@@ -78,6 +79,7 @@ If you're a shop owner, a developer building for one, or just someone who believ
 
 ### Core
 - **Serial / IMEI tracking + warranty register** — toggle "Has serial numbers" on a product (electronics, mobile, jewellery, auto parts) and every unit sold is captured individually. Warranty period rolls forward from the invoice date. Search any serial across the lifetime of the shop, see which customer / invoice / date it ties back to, and at a glance know whether warranty is active, expiring within 30 days, expired, or unset.
+- **Batch + expiry tracking** — toggle "Has batch / expiry" on a product (pharmacy, food, cosmetics, paint, lubricants) and every invoice line captures batch number, manufacturing date and expiry. Optional shelf-life-days auto-fills expiry from the manufacturing date. The Batches page is a unified expiry register across sales and purchases with tabs for Active / Expiring (≤30d) / Expired — the front-of-counter answer to "what's about to go bad?"
 - **GST toggle** — registered businesses get full GST behaviour (CGST/SGST/IGST splits, GSTR-1/3B export, HSN columns); below-threshold shops can turn GST off in one click and the invoice / POS / reports adjust automatically (no GSTIN required, no tax columns, simple "Item / Qty / Rate / Total" bills)
 - **GST-compliant invoicing** — automatic CGST/SGST/IGST split based on party state vs. business state
 - **Quotations** with one-click "Convert to Invoice"
@@ -314,6 +316,12 @@ All routes are under `/api`. Returns JSON. CORS allows `http://localhost:5173` b
 | GET    | `/api/serials?q=&status=&product_id=` | Paginated serial register; status = active/expiring/expired/unknown |
 | GET    | `/api/serials/lookup/:serial`         | Find a single serial (case-insensitive) with invoice + party context |
 | GET    | `/api/serials/stats`                  | Counts by warranty status — drives the Serials page header |
+
+### Batches & Expiry
+| Method | Path                                            | Description                                                            |
+| ------ | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| GET    | `/api/batches?q=&status=&type=&product_id=`     | Paginated batch register; status = active/expiring/expired/unknown; type filter sale\|purchase |
+| GET    | `/api/batches/stats`                            | Counts by expiry bucket — drives the Batches page header               |
 | GET    | `/api/reports/gstr1?period=YYYY-MM`   | GSTR-1 sections (B2B, B2CL, B2CS, CDNR, CDNUR, HSN, DOCS) + counts/totals/warnings |
 | GET    | `/api/reports/gstr1/csv?period=YYYY-MM&section=b2b\|b2cl\|b2cs\|cdnr\|cdnur\|hsn\|docs` | Tally-compatible CSV per section |
 | GET    | `/api/reports/gstr3b?period=YYYY-MM`  | GSTR-3B summary (3.1a, 3.1c, 3.2, 4 ITC, 6.1 payable) |
@@ -399,7 +407,7 @@ npm run db:status     # list applied + pending migrations
 npm run db:migrate    # apply pending migrations
 ```
 
-Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products` (incl. `has_serial`, `warranty_months`), `stock_movements`, `invoices` (incl. `share_token`, and `original_invoice_id/no/date` for credit notes), `invoice_items`, `item_serials`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
+Tables: `users` (incl. TOTP columns), `settings`, `parties`, `products` (incl. `has_serial`, `warranty_months`, `has_batch`, `shelf_life_days`), `stock_movements`, `invoices` (incl. `share_token`, and `original_invoice_id/no/date` for credit notes), `invoice_items` (incl. `batch_no`, `mfg_date`, `exp_date`), `item_serials`, `payments`, `expenses`, `audit_log`, `recurring_invoices`, `bank_accounts`, `bank_statement_lines`, `reconciliation_matches`, `schema_migrations`.
 
 To inspect the database directly:
 ```bash

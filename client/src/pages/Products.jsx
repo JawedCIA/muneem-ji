@@ -203,6 +203,36 @@ function ProductForm({ open, initial, onClose, onSaved }) {
             </div>
           )}
         </div>
+        <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.has_batch && form.has_batch !== '0'}
+              onChange={(e) => setForm({ ...form, has_batch: e.target.checked ? 1 : 0 })}
+              className="mt-0.5 rounded border-slate-300 text-amber focus:ring-amber/40"
+            />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-navy">This product has a batch number / expiry date</div>
+              <div className="text-xs text-slate-500 mt-0.5">
+                For pharmacy, food, cosmetics, paint, lubricants — each lot has its own batch and expiry.
+                You'll be asked to capture batch and expiry on every invoice line.
+              </div>
+            </div>
+          </label>
+          {!!form.has_batch && form.has_batch !== '0' && (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                type="number"
+                min="0"
+                max="36500"
+                label="Default Shelf Life (days)"
+                value={form.shelf_life_days ?? ''}
+                onChange={(e) => setForm({ ...form, shelf_life_days: e.target.value === '' ? null : Number(e.target.value) })}
+                hint="Used to auto-suggest expiry from manufacturing date. e.g. 730 for 2 years."
+              />
+            </div>
+          )}
+        </div>
         <div className="md:col-span-2"><Textarea label="Description" rows="2" value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
       </div>
     </Modal>
@@ -252,5 +282,5 @@ function StockAdjustModal({ target, onClose, onSaved }) {
 }
 
 function empty() {
-  return { name: '', sku: '', category: '', description: '', hsn_code: '', unit: 'Nos', sale_price: 0, buy_price: 0, tax_rate: 18, stock: 0, min_stock: 0, has_serial: 0, warranty_months: null };
+  return { name: '', sku: '', category: '', description: '', hsn_code: '', unit: 'Nos', sale_price: 0, buy_price: 0, tax_rate: 18, stock: 0, min_stock: 0, has_serial: 0, warranty_months: null, has_batch: 0, shelf_life_days: null };
 }

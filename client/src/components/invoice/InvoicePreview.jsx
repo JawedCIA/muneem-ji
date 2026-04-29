@@ -84,6 +84,13 @@ export default function InvoicePreview({ invoice, settings }) {
                       <span className="font-bold text-amber-700">S/N:</span> {it.serials.join(', ')}
                     </div>
                   )}
+                  {it.batch_no && (
+                    <div className="text-[10px] font-mono text-slate-500 mt-1 leading-relaxed">
+                      <span className="font-bold text-emerald-700">Batch:</span> {it.batch_no}
+                      {it.mfg_date && <> · <span className="font-bold">Mfg:</span> {it.mfg_date}</>}
+                      {it.exp_date && <> · <span className="font-bold">Exp:</span> {it.exp_date}</>}
+                    </div>
+                  )}
                 </td>
                 {gstOn && <td className="px-3 py-2 font-mono text-xs align-top">{it.hsn_code || '—'}</td>}
                 <td className="px-3 py-2 text-right align-top">{it.qty} {it.unit}</td>

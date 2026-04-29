@@ -1346,6 +1346,120 @@ async function run() {
     assert(r2.status === 404, `expected 404 after cascade, got ${r2.status}`);
   });
 
+  // --- BATCH / EXPIRY (Products → has_batch, invoice batch_no/exp_date, /api/batches) ---
+  let batchIds = {};
+  await step('Create a batch-tracked product (730-day shelf life)', async () => {
+    const r = await req('POST', '/products', {
+      name: 'Crocin 500mg', sku: 'PHARM-CROC-500', sale_price: 25, tax_rate: 12,
+      stock: 100, has_batch: 1, shelf_life_days: 730,
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    assert(r.body.has_batch === 1, `has_batch=${r.body.has_batch}`);
+    assert(r.body.shelf_life_days === 730, `shelf_life_days=${r.body.shelf_life_days}`);
+    batchIds.product = r.body.id;
+  });
+
+  await step('Reject sale of batch-tracked product without batch_no', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2025-04-15', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 10, rate: 25, tax_rate: 12, exp_date: '2026-12-31' }],
+    });
+    assert(r.status === 400, `expected 400, got ${r.status}`);
+    assert(/batch number required/i.test(r.body.error || ''), `error=${r.body.error}`);
+  });
+
+  await step('Reject sale of batch-tracked product without exp_date', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2025-04-15', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 10, rate: 25, tax_rate: 12, batch_no: 'BX-A1' }],
+    });
+    assert(r.status === 400, `expected 400, got ${r.status}`);
+    assert(/expiry date required/i.test(r.body.error || ''), `error=${r.body.error}`);
+  });
+
+  await step('Reject when expiry is before manufacturing', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2025-04-15', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 10, rate: 25, tax_rate: 12,
+        batch_no: 'BAD', mfg_date: '2025-06-01', exp_date: '2025-05-01' }],
+    });
+    assert(r.status === 400, `expected 400, got ${r.status}`);
+    assert(/before manufacturing/i.test(r.body.error || ''), `error=${r.body.error}`);
+  });
+
+  await step('Sale with batch + expiry persists on invoice line', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2025-04-15', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 10, rate: 25, tax_rate: 12,
+        batch_no: 'BX-2025-04', mfg_date: '2024-04-01', exp_date: '2027-08-01' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    batchIds.saleId = r.body.id;
+    const item = r.body.items[0];
+    assert(item.batch_no === 'BX-2025-04', `batch_no=${item.batch_no}`);
+    assert(item.exp_date === '2027-08-01', `exp_date=${item.exp_date}`);
+  });
+
+  await step('Purchase invoice can also carry batch (incoming stock)', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'purchase', date: '2025-04-10', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 500, rate: 18, tax_rate: 12,
+        batch_no: 'BX-2025-PUR', mfg_date: '2025-03-01', exp_date: '2027-03-01' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    batchIds.purchaseId = r.body.id;
+  });
+
+  await step('GET /batches lists both, sale + purchase, status=active', async () => {
+    const r = await req('GET', '/batches?q=Crocin');
+    assert(r.status === 200, `status=${r.status}`);
+    const rows = r.body.rows || r.body;
+    assert(rows.length >= 2, `expected ≥2 rows, got ${rows.length}`);
+    const sale = rows.find((x) => x.batch_no === 'BX-2025-04');
+    assert(sale && sale.status === 'active', `sale status=${sale?.status}`);
+    assert(sale.invoice_type === 'sale', `invoice_type=${sale.invoice_type}`);
+  });
+
+  await step('GET /batches?type=purchase filters to purchases only', async () => {
+    const r = await req('GET', '/batches?type=purchase');
+    assert(r.status === 200, `status=${r.status}`);
+    const rows = r.body.rows || r.body;
+    assert(rows.every((x) => x.invoice_type === 'purchase'), 'non-purchase row leaked through');
+  });
+
+  await step('GET /batches/stats shows totals', async () => {
+    const r = await req('GET', '/batches/stats');
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.total >= 2, `total=${r.body.total}`);
+    assert(r.body.active >= 2, `active=${r.body.active}`);
+  });
+
+  await step('Status bucket: expired batch is flagged correctly', async () => {
+    const r = await req('POST', '/invoices', {
+      type: 'sale', date: '2025-04-15', status: 'sent',
+      items: [{ product_id: batchIds.product, name: 'Crocin 500mg', qty: 1, rate: 25, tax_rate: 12,
+        batch_no: 'OLD-BATCH', exp_date: '2024-01-01' }],
+    });
+    assert(r.status === 201, `status=${r.status}`);
+    const list = await req('GET', '/batches?q=OLD-BATCH');
+    const row = (list.body.rows || list.body)[0];
+    assert(row?.status === 'expired', `status=${row?.status}`);
+  });
+
+  await step('Editing line clears batch when product changed to non-batch', async () => {
+    const inv = await req('GET', `/invoices/${batchIds.saleId}`);
+    const items = inv.body.items.map((it) => ({
+      product_id: null,
+      name: 'Generic medicine',
+      qty: it.qty, rate: it.rate, tax_rate: it.tax_rate,
+    }));
+    const r = await req('PUT', `/invoices/${batchIds.saleId}`, {
+      ...inv.body, items,
+    });
+    assert(r.status === 200, `status=${r.status}`);
+    assert(r.body.items[0].batch_no == null, `batch_no leaked: ${r.body.items[0].batch_no}`);
+  });
+
   // --- SUMMARY ---
   console.log('');
   const failed = results.filter((r) => !r.ok);

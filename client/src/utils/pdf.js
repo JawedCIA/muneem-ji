@@ -102,12 +102,20 @@ function InvoiceDoc({ invoice, settings, logoSrc }) {
               React.createElement(Text, { style: [styles.th, { width: '14%', textAlign: 'right' }] }, 'Amount'),
             ),
         ...(invoice.items || []).map((it, i) => {
-          const itemCell = it.serials?.length
+          const extras = [];
+          if (it.serials?.length) extras.push(`S/N: ${it.serials.join(', ')}`);
+          if (it.batch_no) {
+            const parts = [`Batch: ${it.batch_no}`];
+            if (it.mfg_date) parts.push(`Mfg: ${it.mfg_date}`);
+            if (it.exp_date) parts.push(`Exp: ${it.exp_date}`);
+            extras.push(parts.join(' · '));
+          }
+          const itemCell = extras.length
             ? React.createElement(View, { style: { flexDirection: 'column' } },
                 React.createElement(Text, { style: { fontWeight: 'bold' } }, it.name),
-                React.createElement(Text, { style: { fontSize: 7, color: '#64748b', marginTop: 2 } },
-                  `S/N: ${it.serials.join(', ')}`
-                ),
+                ...extras.map((line, j) => React.createElement(
+                  Text, { key: j, style: { fontSize: 7, color: '#64748b', marginTop: 2 } }, line
+                )),
               )
             : React.createElement(Text, { style: { fontWeight: 'bold' } }, it.name);
           return gstOn

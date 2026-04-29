@@ -14,7 +14,7 @@ const STATUS_OPTIONS = {
 };
 
 function emptyItem(defaultTaxRate = 18) {
-  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: defaultTaxRate, has_serial: false, warranty_months: null, serials: [] };
+  return { product_id: null, name: '', hsn_code: '', qty: 1, unit: 'Nos', rate: 0, tax_rate: defaultTaxRate, has_serial: false, warranty_months: null, serials: [], has_batch: false, shelf_life_days: null, batch_no: '', mfg_date: '', exp_date: '' };
 }
 
 export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel }) {
@@ -75,7 +75,7 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
 
   function pickProduct(i, productId) {
     if (!productId) {
-      updateItem(i, { product_id: null, has_serial: false, warranty_months: null, serials: [] });
+      updateItem(i, { product_id: null, has_serial: false, warranty_months: null, serials: [], has_batch: false, shelf_life_days: null, batch_no: '', mfg_date: '', exp_date: '' });
       return;
     }
     const p = products.find((x) => x.id === productId);
@@ -90,6 +90,11 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
       has_serial: !!p.has_serial && p.has_serial !== 0,
       warranty_months: p.warranty_months ?? null,
       serials: [],
+      has_batch: !!p.has_batch && p.has_batch !== 0,
+      shelf_life_days: p.shelf_life_days ?? null,
+      batch_no: '',
+      mfg_date: '',
+      exp_date: '',
     });
   }
 
@@ -108,6 +113,21 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
         }
       }
     }
+    for (const it of validItems) {
+      if (!it.has_batch) continue;
+      if (!String(it.batch_no || '').trim()) {
+        e.items = `${it.name}: batch number required`;
+        break;
+      }
+      if (!it.exp_date) {
+        e.items = `${it.name}: expiry date required`;
+        break;
+      }
+      if (it.mfg_date && it.exp_date < it.mfg_date) {
+        e.items = `${it.name}: expiry date is before manufacturing date`;
+        break;
+      }
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -122,9 +142,13 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
         items: form.items
           .filter((it) => it.name && Number(it.qty) > 0)
           .map((it) => {
-            const { has_serial, warranty_months, ...rest } = it;
+            const { has_serial, warranty_months, has_batch, shelf_life_days, ...rest } = it;
             const serials = (it.serials || []).map((s) => String(s).trim()).filter(Boolean);
-            return serials.length ? { ...rest, serials } : { ...rest, serials: [] };
+            const out = serials.length ? { ...rest, serials } : { ...rest, serials: [] };
+            out.batch_no = String(out.batch_no || '').trim() || null;
+            out.mfg_date = out.mfg_date || null;
+            out.exp_date = out.exp_date || null;
+            return out;
           }),
       };
       if (form.interstateOverride) payload.interstate = form.interstate;
@@ -265,6 +289,17 @@ export default function InvoiceForm({ type = 'sale', initial, onSaved, onCancel 
                   onChange={(serials) => updateItem(i, { serials })}
                 />
               ) : null,
+              it.has_batch ? (
+                <BatchRow
+                  key={`batch-${i}`}
+                  colSpan={gstEnabled ? 8 : 6}
+                  batchNo={it.batch_no || ''}
+                  mfgDate={it.mfg_date || ''}
+                  expDate={it.exp_date || ''}
+                  shelfLifeDays={it.shelf_life_days}
+                  onChange={(patch) => updateItem(i, patch)}
+                />
+              ) : null,
               ])}
             </tbody>
           </table>
@@ -321,6 +356,57 @@ function Row({ label, value }) {
       <span className="text-slate-500">{label}</span>
       <span className="font-semibold text-navy">{value}</span>
     </div>
+  );
+}
+
+function BatchRow({ colSpan, batchNo, mfgDate, expDate, shelfLifeDays, onChange }) {
+  // When user fills mfg_date, auto-suggest exp_date = mfg + shelf_life_days (only if exp_date is empty)
+  function onMfgChange(v) {
+    const patch = { mfg_date: v };
+    if (v && shelfLifeDays && !expDate) {
+      const d = new Date(`${v}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() + Number(shelfLifeDays));
+      patch.exp_date = d.toISOString().slice(0, 10);
+    }
+    onChange(patch);
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const isExpired = expDate && expDate < today;
+  return (
+    <tr className="border-t-0 bg-emerald-50/40">
+      <td colSpan={colSpan} className="px-3 py-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[140px]">
+            <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Batch No</label>
+            <input
+              className="input mt-1 font-mono text-xs"
+              placeholder="e.g. BX-2025-04"
+              value={batchNo}
+              onChange={(e) => onChange({ batch_no: e.target.value })}
+            />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Mfg Date</label>
+            <input
+              type="date"
+              className="input mt-1 text-xs"
+              value={mfgDate}
+              onChange={(e) => onMfgChange(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[140px]">
+            <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Expiry Date</label>
+            <input
+              type="date"
+              className={`input mt-1 text-xs ${isExpired ? 'border-rose-400 text-rose-700' : ''}`}
+              value={expDate}
+              onChange={(e) => onChange({ exp_date: e.target.value })}
+            />
+            {isExpired && <p className="text-[11px] text-rose-600 mt-0.5">Already expired</p>}
+          </div>
+        </div>
+      </td>
+    </tr>
   );
 }
 
