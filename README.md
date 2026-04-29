@@ -48,6 +48,8 @@ Built and maintained by **[mannatai.com](https://mannatai.com)**
 > # open http://localhost:3001
 > ```
 
+**Deeper docs:** [Install](docs/INSTALL.md) · [FAQ](docs/FAQ.md) · [GST Returns](docs/GST-RETURNS.md) · [Shop Types](docs/SHOP-TYPES.md) · [Contributing](docs/CONTRIBUTING.md) · [Security](docs/SECURITY.md)
+
 ---
 
 ## What is Muneem Ji?
